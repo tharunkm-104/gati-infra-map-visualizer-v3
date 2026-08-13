@@ -773,17 +773,19 @@ Promise.all([
   fetch("../data/all-india-states.json").then((r) => r.json()),
   fetch("../data/all-india-cities.json").then((r) => r.json()),
   fetch("../data/all-india-coverage.json").then((r) => r.json()),
-  fetch("../data/all-india-health-points.json").then((r) => r.json()),
-  fetch("../data/all-india-language-points.json").then((r) => r.json()),
+  // The RESOLVED point file, not the two raw layers: this one has
+  // data/manual-overrides.json applied, so hand-corrected coordinates reach
+  // the map and not just the tables. Written by prep/build_all_india_rollups.py.
+  fetch("../data/all-india-points.json").then((r) => r.json()),
 ])
-  .then(([cityRows, stateRows, infraRows, allIndiaStateRows, allIndiaCityRows, coverage, healthPoints, languagePoints]) => {
+  .then(([cityRows, stateRows, infraRows, allIndiaStateRows, allIndiaCityRows, coverage, allIndiaPointRows]) => {
     cities = cityRows;
     states = stateRows;
     infrastructure = infraRows;
     allIndiaStates = allIndiaStateRows;
     allIndiaCities = allIndiaCityRows;
     allIndiaCoverage = coverage;
-    allIndiaPoints = [...healthPoints, ...languagePoints].filter(isRenderableInfra);
+    allIndiaPoints = allIndiaPointRows.filter(isRenderableInfra);
     renderableInfrastructure = infrastructure.filter(isRenderableInfra);
     cityColorScale = d3.scaleOrdinal().domain(cities.map((c) => c.city)).range(CITY_PALETTE);
     stateColorScale = d3.scaleOrdinal().domain(states.map((s) => s.state)).range(CITY_PALETTE);
