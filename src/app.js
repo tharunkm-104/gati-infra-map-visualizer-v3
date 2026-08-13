@@ -147,16 +147,9 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
 const infraCanvas = L.canvas({ padding: 0.3 });
 
 // ---- All-India Health dataset (NABH + NMC + INC) ----
-const ALL_INDIA_SERIES = [
-  { key: "goethe_schools", label: "Goethe-Institut / Zentrum", color: C_GOETHE },
-  { key: "exam_centres", label: "Goethe/TELC Exam Centres", color: C_EXAM },
-  { key: "heis_german", label: "HEIs Offering German", color: C_HEI },
-  { key: "pdot_siics", label: "PDOT/SIIC Centres", color: C_PDOT },
-  { key: "iiscs", label: "IISC Centres", color: C_IISC },
-  { key: "nabh_facilities", label: "NABH Accredited Health Facilities", color: C_NABH },
-  { key: "nmc_colleges", label: "NMC Medical Colleges", color: C_NMC },
-  { key: "inc_colleges", label: "INC Nursing Colleges", color: C_INC },
-];
+// Column names used by the all-India rollup tables. Kept as documentation of
+// what data/all-india-states.json holds; GROUP_MAPPINGS is what actually maps
+// these onto the view-mode series the legend and table render.
 const ALL_INDIA_SUBTYPE_KEY = {
   "Goethe/PASCH/Zentrum School": "goethe_schools",
   "Goethe/TELC Exam Centre": "exam_centres",
@@ -169,7 +162,6 @@ const ALL_INDIA_SUBTYPE_KEY = {
   "INC Nursing College": "inc_colleges",
 };
 
-// Always use VIEW_MODES[viewMode].series, even for allIndia
 function currentSeries() {
   return VIEW_MODES[viewMode].series;
 }
@@ -184,10 +176,7 @@ function activeSeries() {
 }
 
 function resetActiveCategories() {
-  activeCategories = new Set(// Always use VIEW_MODES[viewMode].series, even for allIndia
-function currentSeries() {
-  return VIEW_MODES[viewMode].series;
-}().map((s) => s.key));
+  activeCategories = new Set(currentSeries().map((s) => s.key));
 }
 
 function safeLevel() {
@@ -197,7 +186,17 @@ function safeLevel() {
   if (zoom <= 9) return "city";
   return "infrastructure";
 }
-// Mapping individual all-india keys into group totals
+
+// Only sums series that are currently switched on, so bubble sizes and the
+// table stay consistent with whatever is deselected in the legend.
+// All-India rows are stored with granular column names (nabh_facilities,
+// goethe_schools...), but the view modes ask for pilot-shaped keys
+// (health_total, formal_german_raw...). GROUP_MAPPINGS bridges the two so one
+// series list drives both datasets.
+//
+// NOTE: general_skilling_raw deliberately omits private_training -- the
+// all-India layer has no private-training data. If that ever changes, add it
+// here or the "By category pair" view will under-count by exactly that column.
 const GROUP_MAPPINGS = {
   language_total: ["goethe_schools", "exam_centres", "heis_german", "pdot_siics", "iiscs"],
   health_total: ["nabh_facilities", "nmc_colleges", "inc_colleges"],
@@ -205,32 +204,29 @@ const GROUP_MAPPINGS = {
   general_skilling_raw: ["pdot_siics", "iiscs"],
   health_facilities: ["nabh_facilities"],
   medical_colleges: ["nmc_colleges"],
-  nursing_colleges: ["inc_colleges"]
+  nursing_colleges: ["inc_colleges"],
 };
 
+// Direct column first; fall back to summing the group's members.
 function getRowValue(row, key) {
   if (row[key] !== undefined) return row[key];
   const subKeys = GROUP_MAPPINGS[key];
-  if (subKeys) {
-    return subKeys.reduce((sum, k) => sum + (row[k] || 0), 0);
-  }
+  if (subKeys) return subKeys.reduce((sum, k) => sum + (row[k] || 0), 0);
   return 0;
 }
 
+// Only sums series that are currently switched on, so bubble sizes and the
+// table stay consistent with whatever is deselected in the legend.
 function locationTotal(row) {
   return activeSeries().reduce((sum, s) => sum + getRowValue(row, s.key), 0);
 }
-// Only sums series that are currently switched on, so bubble sizes and the
-// table stay consistent with whatever is deselected in the legend.
-// function locationTotal(row) {
-//  return activeSeries().reduce((sum, s) => sum + (row[s.key] || 0), 0);
-// }
 
 // The series key an individual infra point maps to under the current view mode.
 // Returns null when the point's subtype has no matching series (e.g. the
 // PDOT/SIIC/IISC bundle in "Fully disaggregated", which is split across three
 // series that individual points cannot be attributed to).
 function seriesKeyForPoint(point) {
+  // Both datasets use the same subtype strings, so one lookup serves both.
   const meta = POINT_SUBTYPE_META[point.subtype];
   if (!meta) return null;
   if (viewMode === "domain") return `${meta.domain}_total`;
@@ -415,7 +411,7 @@ function locationHoverHtml(point) {
   const rows = countableSeries()
     .map((s) => {
       const off = activeCategories.has(s.key) ? "" : " hover-row--off";
-      return `<div class="hover-row${off}"><span>${s.label}</span><b>${format.format(point[s.key] || 0)}</b></div>`;
+      return `<div class="hover-row${off}"><span>${s.label}</span><b>${format.format(getRowValue(point, s.key))}</b></div>`;
     })
     .join("");
   return `<strong>${point.levelName}</strong>${rows}`;
@@ -441,11 +437,6 @@ function infrastructureMarker(point, latitude, longitude) {
 }
 
 function pointColor(point) {
-  if (datasetMode === "allIndia") {
-    const key = ALL_INDIA_SUBTYPE_KEY[point.subtype];
-    const series = ALL_INDIA_SERIES.find((s) => s.key === key);
-    return series ? series.color : FALLBACK_COLOR;
-  }
   const meta = POINT_SUBTYPE_META[point.subtype];
   if (!meta) return FALLBACK_COLOR;
   if (viewMode === "domain") return DOMAIN_COLOR[meta.domain];
@@ -541,16 +532,20 @@ function renderAggregateSummary() {
       host.innerHTML = "";
       return;
     }
-    const mapped = mappedPointCounts();
-    let grandCounted = 0;
+    // `total` is the per-state facility count; summing the series instead would
+    // double-count in modes where categories nest (domain, pairs).
+    const allIndiaTotal = allIndiaStates.reduce((sum, st) => sum + (st.total || 0), 0);
     let government = 0;
     let privateCount = 0;
     allIndiaStates.forEach((s) => {
       government += s.government;
       privateCount += s.private;
     });
-    const items = ALL_INDIA_SERIES.map((s) => {
-      const counted = allIndiaStates.reduce((sum, st) => sum + (st[s.key] || 0), 0);
+    // Same series list as the legend and table, resolved through getRowValue so
+    // a pilot-shaped key like health_total sums its all-India member columns.
+    let grandCounted = 0;
+    const items = countableSeries().map((s) => {
+      const counted = allIndiaStates.reduce((sum, st) => sum + getRowValue(st, s.key), 0);
       grandCounted += counted;
       const off = activeCategories.has(s.key) ? "" : " summary-item--off";
       return `<div class="summary-item${off}">
@@ -561,9 +556,9 @@ function renderAggregateSummary() {
     }).join("");
     host.innerHTML =
       `<div class="summary-title">All-India (Language + Health) &middot; ${allIndiaStates.length} states/UTs &middot; ` +
-      `${format.format(grandCounted)} points &middot; ` +
+      `${format.format(allIndiaTotal)} points &middot; ` +
       `<span class="summary-gap">ownership split shown for every layer except NABH ` +
-      `(${format.format(government + privateCount)} of ${format.format(grandCounted)}): ` +
+      `(${format.format(government + privateCount)} of ${format.format(allIndiaTotal)}): ` +
       `${format.format(government)} government, ${format.format(privateCount)} private</span> &middot; ` +
       `<span class="summary-gap">NABH source carries no per-facility ownership field</span></div>` +
       `<div class="summary-items">${items}</div>`;
@@ -649,9 +644,6 @@ function renderLegend() {
 // reads as one block; the state name and the city name are the two frozen
 // columns on the left, category counts scroll horizontally underneath.
 function renderTable(level) {
-  if (datasetMode === "allIndia" && level === "city") {
-    level = "state";
-  }
   renderLegend();
   const container = document.getElementById("location-table");
   const series = countableSeries();
@@ -666,9 +658,9 @@ function renderTable(level) {
     `<span>Selected total</span></div>`;
 
   const cellsFor = (row) =>
-  series
-    .map((s) => `<span${activeCategories.has(s.key) ? "" : ' class="col-off"'}>${format.format(getRowValue(row, s.key))}</span>`)
-    .join("");
+    series
+      .map((s) => `<span${activeCategories.has(s.key) ? "" : ' class="col-off"'}>${format.format(getRowValue(row, s.key))}</span>`)
+      .join("");
 
   let body;
   if (grouped) {
