@@ -6,10 +6,15 @@ Inputs   data/all-india-health-points.json    (prep/build_all_india_health.py)
          data/all-india-language-points.json  (prep/build_all_india_language.py)
          data/manual-overrides.json           (hand-edited; optional)
 
-Outputs  data/all-india-states.json           one row per state/UT
+Outputs  data/all-india-points.json           BOTH layers merged, overrides applied
+         data/all-india-states.json           one row per state/UT
          data/all-india-cities.json           one row per (state, city)
          data/all-india-coverage.json         how much of the layer is city-attributed
-         
+
+The dashboard reads all-india-points.json, NOT the two raw *-points.json files.
+That is the whole reason this step exists: manual corrections have to reach the
+map, not just the tables. The raw files stay as the untouched output of the
+source builders so a correction is always visible as a diff against them.
 
 RUN ORDER
   1. prep/build_all_india_health.py
@@ -29,6 +34,7 @@ from collections import defaultdict
 HEALTH = "data/all-india-health-points.json"
 LANGUAGE = "data/all-india-language-points.json"
 OVERRIDES = "data/manual-overrides.json"
+OUT_POINTS = "data/all-india-points.json"
 OUT_STATES = "data/all-india-states.json"
 OUT_CITIES = "data/all-india-cities.json"
 OUT_COVERAGE = "data/all-india-coverage.json"
@@ -190,10 +196,12 @@ def main():
                  "identified in the source extracts appear here."),
     }
 
+    json.dump(points, open(OUT_POINTS, "w", encoding="utf-8"), ensure_ascii=False)
     json.dump(states_out, open(OUT_STATES, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     json.dump(cities_out, open(OUT_CITIES, "w", encoding="utf-8"), ensure_ascii=False)
     json.dump(cov, open(OUT_COVERAGE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
+    print(f"resolved points: {len(points)} -> {OUT_POINTS}")
     print(f"states/UTs: {len(states_out)}   cities: {len(cities_out)}")
     for l in cov["layers"]:
         print(f"  {l['layer']:9} {l['points']:6} points, "
