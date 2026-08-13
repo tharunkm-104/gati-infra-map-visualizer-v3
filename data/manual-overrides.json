@@ -36,6 +36,28 @@
       "drop": true
     },
     {
+      "_comment": "Fixing wrong coordinates for Vasan Eye Care Hospital.",
+      "match": {
+        "name": "Vasan Eye Care Hospital, SCO -379 &380, Sector -29"
+      },
+      "set": {
+        "latitude": 28.47189410782642,
+        "longitude": 77.07220477747582,
+        "coordinateStatus": "researched_override"
+      }
+    },
+    {
+      "_comment": "Fixing wrong coordinates for Dr. Prasanna's Dental Care and Implant Centre.",
+      "match": {
+        "name": "Dr. Prasanna Dental Clinic & Implant Centre"
+      },
+      "set": {
+        "latitude": 18.47192708222247,
+        "longitude": 73.88892637690061,
+        "coordinateStatus": "researched_override"
+      }
+    },
+    {
       "_comment": "EXAMPLE - parked. Fixing a wrong coordinate. Set coordinateStatus to researched_override so the audit trail shows it was corrected, not sourced.",
       "_disabled": true,
       "match": { "name": "Some Hospital", "city": "Pune" },
