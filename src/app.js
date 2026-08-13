@@ -104,7 +104,7 @@ const POINT_SUBTYPE_META = {
 const DOMAIN_COLOR = { language: C_GOETHE, health: C_NMC };
 const FALLBACK_COLOR = GATI.grey;
 
-const CITY_PALETTE = [...d3.schemeTableau10, ...d3.schemeSet3];
+const CITY_PALETTE = [...d3.schemeTableau10, ...d3.schemeDark2, ...d3.schemeCategory10];
 let cityColorScale = null;
 let stateColorScale = null;
 let allIndiaStateColorScale = null;
