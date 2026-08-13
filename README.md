@@ -1,6 +1,6 @@
 # Infrastructure Map
 
-Static, GitHub Pages-ready visualizer for the 15 shortlisted Indian cities in the
+Static, GitHub Pages-ready visualizer for the 15 shortlisted Indian cities and at all-India level, in the
 German-language and health-infrastructure analysis.
 
 ## What this version shows
