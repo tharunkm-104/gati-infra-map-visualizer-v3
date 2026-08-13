@@ -644,6 +644,10 @@ function renderLegend() {
 // reads as one block; the state name and the city name are the two frozen
 // columns on the left, category counts scroll horizontally underneath.
 function renderTable(level) {
+  // If in 'allIndia' dataset mode and 'city' level is selected, fall back to rendering the state table
+  if (datasetMode === "allIndia" && level === "city") {
+    level = "state";
+  }
   renderLegend();
   const container = document.getElementById("location-table");
   const series = countableSeries();
