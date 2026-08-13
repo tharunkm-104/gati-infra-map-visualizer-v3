@@ -8,7 +8,7 @@
   --sky: #84D2E2;
   --brown: #573D00;
   --grey: #839097;
-  --grey-light: #D8E2E7; 
+  --grey-light: #D8E2E7;
 
   --ink: #00333A;
   --muted: #5C6E73;
@@ -412,7 +412,6 @@ h1 {
   font-size: 11px;
   font-weight: 800;
   box-shadow: 0 5px 16px rgba(22, 32, 28, 0.25);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), 0 0 2px rgba(0, 0, 0, 0.6);
 }
 
 .infra-dot {
@@ -596,7 +595,7 @@ body.all-india-mode .pill-toggle {
 
 .bottom-bar .legend {
   margin-left: auto;
-  margin-right: 0;
+  margin-right: 46px;
   max-width: 260px;
   max-height: 46vh;
   overflow-y: auto;
@@ -604,7 +603,7 @@ body.all-india-mode .pill-toggle {
 
 .ownership-row {
   margin: 0 46px 0 auto;
-  display: none;
+  display: grid;
   gap: 5px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -756,8 +755,6 @@ body {
   line-height: 1.3;
 }
 
-
-
 .detail-pane {
   min-height: 0;
 }
@@ -769,3 +766,9 @@ body {
 /* The map fills its pane, which is already sized to the shell. */
 .map-pane { display: flex; flex-direction: column; }
 #map { flex: 1 1 auto; min-height: 0; }
+
+/* Bubble labels sit on dynamically-assigned fills, some of them light, so the
+   label carries its own dark halo rather than relying on the fill. */
+.marker-bubble {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), 0 0 2px rgba(0, 0, 0, 0.6);
+}
