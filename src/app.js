@@ -57,7 +57,7 @@ const VIEW_MODES = {
     label: "By category pair",
     series: [
       { key: "formal_german_raw", label: "Formal German Infrastructure (Goethe/PASCH/Zentrum + HEIs + Exam Centres)", color: C_GOETHE },
-      { key: "general_skilling_raw", label: "General Skilling Infrastructure (PDOT/SIIC/IISC + Private Training)", color: C_PDOT },
+      { key: "general_skilling_raw", label: "General Skilling Infrastructure (PDOT/SIIC/IISC)", color: C_PDOT },
       { key: "nursing_colleges", label: "INC Nursing Colleges", color: C_INC },
       { key: "medical_colleges", label: "NMC Medical Colleges", color: C_NMC },
       { key: "health_facilities", label: "NABH Accredited Health Facilities", color: C_NABH },
@@ -71,11 +71,6 @@ const VIEW_MODES = {
       { key: "exam_centres", label: "Goethe/TELC Exam Centres", color: C_EXAM },
       { key: "pdot_siics", label: "PDOT/SIIC Centres", color: C_PDOT },
       { key: "iiscs", label: "IISC Centres", color: C_IISC },
-      // Counts only -- private German training organisations are reported as
-      // city totals with no geocoded addresses, so this chip moves a table
-      // column and the aggregate figure but never draws a dot. Without it the
-      // disaggregated view would silently total 548 fewer than the other two.
-      { key: "private_training", label: "Private German Training Organisations", color: C_PRIVATE_LANG, countsOnly: true },
       { key: "nursing_colleges", label: "INC Nursing Colleges", color: C_INC },
       { key: "medical_colleges", label: "NMC Medical Colleges", color: C_NMC },
       { key: "health_facilities", label: "NABH Accredited Health Facilities", color: C_NABH },
@@ -104,6 +99,7 @@ const POINT_SUBTYPE_META = {
 const DOMAIN_COLOR = { language: C_GOETHE, health: C_NMC };
 const FALLBACK_COLOR = GATI.grey;
 
+// Darker schemes only: schemeSet3 pastels made white bubble labels unreadable.
 const CITY_PALETTE = [...d3.schemeTableau10, ...d3.schemeDark2, ...d3.schemeCategory10];
 let cityColorScale = null;
 let stateColorScale = null;
@@ -119,8 +115,6 @@ let allIndiaStates = [];
 let allIndiaCities = [];
 let allIndiaPoints = [];
 let allIndiaCoverage = null;
-let nabhEligibleOnly = true; // pilot layer: drop NABH rows flagged EXCLUDED/UNCERTAIN
-let activeOwnership = new Set(["Government", "Private", "Not specified"]);
 let viewMode = "domain";
 let forcedLevel = "auto";
 let activeMarkers = [];
@@ -197,22 +191,30 @@ function safeLevel() {
 // NOTE: general_skilling_raw deliberately omits private_training -- the
 // all-India layer has no private-training data. If that ever changes, add it
 // here or the "By category pair" view will under-count by exactly that column.
-const GROUP_MAPPINGS = {
-  language_total: ["goethe_schools", "exam_centres", "heis_german", "pdot_siics", "iiscs"],
-  health_total: ["nabh_facilities", "nmc_colleges", "inc_colleges"],
-  formal_german_raw: ["goethe_schools", "exam_centres", "heis_german"],
+// Every roll-up key is ALWAYS recomputed from the eight granular columns, never
+// read from a stored column. That is what makes the three view modes tally with
+// each other and with the map: there is one set of underlying numbers and three
+// ways of grouping it.
+const COMPUTED_KEYS = {
+  language_total: ["goethe_schools", "heis_german", "exam_centres", "pdot_siics", "iiscs"],
+  health_total: ["health_facilities", "medical_colleges", "nursing_colleges"],
+  formal_german_raw: ["goethe_schools", "heis_german", "exam_centres"],
   general_skilling_raw: ["pdot_siics", "iiscs"],
-  health_facilities: ["nabh_facilities"],
-  medical_colleges: ["nmc_colleges"],
-  nursing_colleges: ["inc_colleges"],
 };
 
-// Direct column first; fall back to summing the group's members.
+// The all-India rollup names three health columns differently.
+const COLUMN_ALIAS = {
+  health_facilities: "nabh_facilities",
+  medical_colleges: "nmc_colleges",
+  nursing_colleges: "inc_colleges",
+};
+
 function getRowValue(row, key) {
-  if (row[key] !== undefined) return row[key];
-  const subKeys = GROUP_MAPPINGS[key];
-  if (subKeys) return subKeys.reduce((sum, k) => sum + (row[k] || 0), 0);
-  return 0;
+  const parts = COMPUTED_KEYS[key];
+  if (parts) return parts.reduce((sum, k) => sum + getRowValue(row, k), 0);
+  if (row[key] !== undefined) return row[key] || 0;
+  const alias = COLUMN_ALIAS[key];
+  return alias && row[alias] !== undefined ? row[alias] || 0 : 0;
 }
 
 // Only sums series that are currently switched on, so bubble sizes and the
@@ -240,28 +242,20 @@ function isPointActive(point) {
   return activeCategories.has(key);
 }
 
-// The ownership filter control was removed. Ownership still shows on hover and
-// in the summary strip, but no longer gates which points draw.
-function isOwnershipActive() {
-  return true;
-}
-
-// Pilot NABH rows carry an eligibilityFlag from reconcile_flags.py. With the
-// toggle on, EXCLUDED rows (AYUSH, labs, imaging, blood banks, dental clinics,
-// ethics committees) come off the map entirely, but UNCERTAIN rows stay and are
-// drawn hollow: they have real coordinates, and the 107-facility gap between
-// the consolidated table and the eligible points sits inside this class, so
-// hiding them outright would erase exactly the rows that need validating.
+// NABH rows flagged EXCLUDED (AYUSH, labs, imaging, blood banks, dental
+// clinics, ethics committees) are not corridor-relevant and never render. They
+// stay in the data file; reconcile_flags.py remains the place to change a flag.
+// UNCERTAIN rows do render, and render solid -- their eligibility is unresolved
+// but their coordinates are fine, so flagging them visually was misleading.
 function isEligiblePilotPoint(p) {
-  if (!nabhEligibleOnly) return true;
   if (p.subtype !== "NABH Accredited Health Facility") return true;
   return p.eligibilityFlag !== "EXCLUDED";
 }
 
-// Hollow = "do not trust this dot as-is": either the coordinate is approximate,
-// or the facility's corridor eligibility could not be resolved.
+// Hollow means one thing only: the coordinate is approximate (a PIN-code
+// centroid, or a point shared with another institution).
 function isProvisionalPoint(p) {
-  return p.coordinateStatus === "pin_centroid" || p.eligibilityFlag === "UNCERTAIN";
+  return p.coordinateStatus === "pin_centroid";
 }
 
 function coordinateFilteredInfrastructure() {
@@ -274,7 +268,7 @@ function pointsForLevel(level) {
   if (datasetMode === "allIndia") {
     if (level === "state") return allIndiaStates.map((s) => ({ ...s, levelName: s.state }));
     if (level === "city") return allIndiaCities.map((c) => ({ ...c, levelName: c.city }));
-    return allIndiaPoints.filter((p) => isPointActive(p) && isOwnershipActive(p));
+    return allIndiaPoints.filter(isPointActive);
   }
   if (level === "state") return states.map((s) => ({ ...s, levelName: s.state }));
   if (level === "city") return cities.map((c) => ({ ...c, levelName: c.city }));
@@ -348,9 +342,16 @@ function drawMarkers() {
   renderTable(level);
 }
 
+// Square-root so AREA tracks the count (a linear radius makes a big state look
+// several times larger than it is), then clamped to a narrow band so dense
+// states cannot swallow the map at city level.
+const BUBBLE_MIN = 18;
+const BUBBLE_MAX = 44;
+
 function radiusForTotal(total, maxTotal) {
-  const ratio = maxTotal > 0 ? total / maxTotal : 0;
-  return Math.round(20 + ratio * 46);
+  if (!(total > 0) || !(maxTotal > 0)) return BUBBLE_MIN;
+  const ratio = Math.sqrt(Math.min(total, maxTotal) / maxTotal);
+  return Math.round(BUBBLE_MIN + ratio * (BUBBLE_MAX - BUBBLE_MIN));
 }
 
 // The table/bubble rows behind a given zoom level, for whichever dataset is on.
@@ -449,10 +450,7 @@ function infrastructureDetailRows(point) {
   const fields = [
     ["Facility type", point.facilityType],
     ["Ownership", point.ownership],
-    ["Corridor eligibility flag", point.eligibilityFlag],
     ["Status", point.status],
-    ["NABH status", point.nabhStatus],
-    ["Corridor eligibility", point.corridorEligibility],
   ];
   return fields
     .filter(([, value]) => value)
@@ -527,81 +525,36 @@ function renderAggregateSummary() {
   const host = document.getElementById("aggregate-summary");
   if (!host) return;
 
-  if (datasetMode === "allIndia") {
-    if (!allIndiaStates.length) {
-      host.innerHTML = "";
-      return;
-    }
-    // `total` is the per-state facility count; summing the series instead would
-    // double-count in modes where categories nest (domain, pairs).
-    const allIndiaTotal = allIndiaStates.reduce((sum, st) => sum + (st.total || 0), 0);
-    let government = 0;
-    let privateCount = 0;
-    allIndiaStates.forEach((s) => {
-      government += s.government;
-      privateCount += s.private;
-    });
-    // Same series list as the legend and table, resolved through getRowValue so
-    // a pilot-shaped key like health_total sums its all-India member columns.
-    let grandCounted = 0;
-    const items = countableSeries().map((s) => {
-      const counted = allIndiaStates.reduce((sum, st) => sum + getRowValue(st, s.key), 0);
-      grandCounted += counted;
-      const off = activeCategories.has(s.key) ? "" : " summary-item--off";
-      return `<div class="summary-item${off}">
-        <span class="swatch" style="background:${s.color}"></span>
-        <b>${format.format(counted)}</b>
-        <span class="summary-label">${s.label}</span>
-      </div>`;
-    }).join("");
-    host.innerHTML =
-      `<div class="summary-title">All-India (Language + Health) &middot; ${allIndiaStates.length} states/UTs &middot; ` +
-      `${format.format(allIndiaTotal)} points &middot; ` +
-      `<span class="summary-gap">ownership split shown for every layer except NABH ` +
-      `(${format.format(government + privateCount)} of ${format.format(allIndiaTotal)}): ` +
-      `${format.format(government)} government, ${format.format(privateCount)} private</span> &middot; ` +
-      `<span class="summary-gap">NABH source carries no per-facility ownership field</span></div>` +
-      `<div class="summary-items">${items}</div>`;
-    return;
-  }
-
-  if (!cities.length) {
+  const allIndia = datasetMode === "allIndia";
+  const rows = allIndia ? allIndiaStates : cities;
+  if (!rows.length) {
     host.innerHTML = "";
     return;
   }
 
-  // One number per category: the count in the consolidated table. The old
-  // "counted vs mapped" pair compared two things never meant to match --
-  // prep/audit_pilot_reconciliation.py does that comparison properly, per
-  // facility, which is where it belongs.
-  let grandCounted = 0;
+  // Every figure below comes from the same rows the table renders, resolved
+  // through getRowValue. The per-category numbers therefore always sum to the
+  // headline, in every view mode, for both datasets.
+  let total = 0;
   const items = countableSeries()
     .map((s) => {
-      const counted = cities.reduce((sum, c) => sum + (c[s.key] || 0), 0);
-      grandCounted += counted;
-      const detail = s.countsOnly ? `<span class="summary-gap">not geocoded</span>` : "";
+      const counted = rows.reduce((sum, r) => sum + getRowValue(r, s.key), 0);
+      total += counted;
       const off = activeCategories.has(s.key) ? "" : " summary-item--off";
       return `<div class="summary-item${off}">
         <span class="swatch" style="background:${s.color}"></span>
         <b>${format.format(counted)}</b>
         <span class="summary-label">${s.label}</span>
-        ${detail}
       </div>`;
     })
     .join("");
 
-  const centroidCount = coordinateFilteredInfrastructure().filter(isProvisionalPoint).length;
-  const nabhRows = renderableInfrastructure.filter((p) => p.subtype === "NABH Accredited Health Facility");
-  const excluded = nabhRows.filter((p) => p.eligibilityFlag === "EXCLUDED").length;
-  const uncertain = nabhRows.filter((p) => p.eligibilityFlag === "UNCERTAIN").length;
-  const eligibilityNote = nabhEligibleOnly
-    ? `<span class="summary-gap">${format.format(excluded)} NABH rows corridor-ineligible, hidden &middot; ${format.format(uncertain)} unresolved, drawn hollow</span>`
-    : `<span class="summary-gap">${format.format(excluded)} corridor-ineligible and ${format.format(uncertain)} unresolved NABH rows shown</span>`;
-  const centroidNote = `<span class="summary-gap">${format.format(centroidCount)} provisional (hollow) points</span>`;
+  const scope = allIndia
+    ? `All India &middot; ${rows.length} states/UTs`
+    : `15 cities`;
 
   host.innerHTML =
-    `<div class="summary-title">All 15 cities &middot; ${VIEW_MODES[viewMode].label} &middot; ` +
-    `${format.format(grandCounted)} facilities &middot; ${centroidNote} &middot; ${eligibilityNote}</div>` +
+    `<div class="summary-title">${scope} &middot; ${format.format(total)} facilities</div>` +
     `<div class="summary-items">${items}</div>`;
 }
 
@@ -644,7 +597,6 @@ function renderLegend() {
 // reads as one block; the state name and the city name are the two frozen
 // columns on the left, category counts scroll horizontally underneath.
 function renderTable(level) {
-  // If in 'allIndia' dataset mode and 'city' level is selected, fall back to rendering the state table
   renderLegend();
   const container = document.getElementById("location-table");
   const series = countableSeries();
@@ -740,7 +692,6 @@ document.querySelectorAll(".dataset-button").forEach((button) => {
     document.querySelectorAll(".dataset-button").forEach((b) => b.classList.toggle("active", b === button));
     document.body.classList.toggle("all-india-mode", datasetMode === "allIndia");
     resetActiveCategories();
-    activeOwnership = new Set(["Government", "Private", "Not specified"]);
     renderAggregateSummary();
     drawMarkers();
   });
@@ -750,16 +701,6 @@ map.on("zoomend moveend", () => {
   drawMarkers();
 });
 
-const nabhToggle = document.getElementById("nabh-eligible-toggle");
-if (nabhToggle) {
-  nabhToggle.checked = nabhEligibleOnly;
-  nabhToggle.addEventListener("change", () => {
-    nabhEligibleOnly = nabhToggle.checked;
-    renderAggregateSummary();
-    drawMarkers();
-  });
-}
-
 const trueCoordsToggle = document.getElementById("true-coords-toggle");
 if (trueCoordsToggle) {
   trueCoordsToggle.addEventListener("change", () => {
@@ -767,6 +708,27 @@ if (trueCoordsToggle) {
     renderAggregateSummary();
     drawMarkers();
   });
+}
+
+const GRANULAR_KEYS = ["goethe_schools", "heis_german", "exam_centres", "pdot_siics",
+                       "iiscs", "health_facilities", "medical_colleges", "nursing_colleges"];
+
+// The pilot counts are RECOMPUTED from the points that actually render, rather
+// than read from the stored columns in cities.json / states.json. The stored
+// columns came from the consolidated table and disagreed with the map in a
+// dozen small ways (de-duplicated rows, ungeocoded rows, NABH rows we now drop
+// as corridor-ineligible). Deriving them means the card, the table and the dots
+// are three views of one number and cannot drift apart.
+function recountFromPoints(rows, labelKey, points) {
+  const byLabel = new Map(rows.map((r) => [r[labelKey], { ...r }]));
+  byLabel.forEach((row) => GRANULAR_KEYS.forEach((k) => (row[k] = 0)));
+  points.forEach((p) => {
+    const row = byLabel.get(p[labelKey]);
+    if (!row) return; // e.g. the two telc centres in Noida, outside the 15 cities
+    const meta = POINT_SUBTYPE_META[p.subtype];
+    if (meta && row[meta.fullKey] !== undefined) row[meta.fullKey] += 1;
+  });
+  return [...byLabel.values()];
 }
 
 const RENDERABLE_STATUSES = new Set(["source", "pin_centroid", "researched_override"]);
@@ -801,7 +763,9 @@ Promise.all([
     allIndiaCities = allIndiaCityRows;
     allIndiaCoverage = coverage;
     allIndiaPoints = allIndiaPointRows.filter(isRenderableInfra);
-    renderableInfrastructure = infrastructure.filter(isRenderableInfra);
+    renderableInfrastructure = infrastructure.filter(isRenderableInfra).filter(isEligiblePilotPoint);
+    cities = recountFromPoints(cities, "city", renderableInfrastructure);
+    states = recountFromPoints(states, "state", renderableInfrastructure);
     cityColorScale = d3.scaleOrdinal().domain(cities.map((c) => c.city)).range(CITY_PALETTE);
     stateColorScale = d3.scaleOrdinal().domain(states.map((s) => s.state)).range(CITY_PALETTE);
     allIndiaStateColorScale = d3.scaleOrdinal().domain(allIndiaStates.map((s) => s.state)).range(CITY_PALETTE);
