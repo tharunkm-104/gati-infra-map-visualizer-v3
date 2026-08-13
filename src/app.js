@@ -169,8 +169,9 @@ const ALL_INDIA_SUBTYPE_KEY = {
   "INC Nursing College": "inc_colleges",
 };
 
+// Always use VIEW_MODES[viewMode].series, even for allIndia
 function currentSeries() {
-  return datasetMode === "allIndia" ? ALL_INDIA_SERIES : VIEW_MODES[viewMode].series;
+  return VIEW_MODES[viewMode].series;
 }
 
 // Every series in every view mode maps to a count column in cities.json.
@@ -183,7 +184,10 @@ function activeSeries() {
 }
 
 function resetActiveCategories() {
-  activeCategories = new Set(currentSeries().map((s) => s.key));
+  activeCategories = new Set(// Always use VIEW_MODES[viewMode].series, even for allIndia
+function currentSeries() {
+  return VIEW_MODES[viewMode].series;
+}().map((s) => s.key));
 }
 
 function safeLevel() {
@@ -193,22 +197,40 @@ function safeLevel() {
   if (zoom <= 9) return "city";
   return "infrastructure";
 }
+// Mapping individual all-india keys into group totals
+const GROUP_MAPPINGS = {
+  language_total: ["goethe_schools", "exam_centres", "heis_german", "pdot_siics", "iiscs"],
+  health_total: ["nabh_facilities", "nmc_colleges", "inc_colleges"],
+  formal_german_raw: ["goethe_schools", "exam_centres", "heis_german"],
+  general_skilling_raw: ["pdot_siics", "iiscs"],
+  health_facilities: ["nabh_facilities"],
+  medical_colleges: ["nmc_colleges"],
+  nursing_colleges: ["inc_colleges"]
+};
 
+function getRowValue(row, key) {
+  if (row[key] !== undefined) return row[key];
+  const subKeys = GROUP_MAPPINGS[key];
+  if (subKeys) {
+    return subKeys.reduce((sum, k) => sum + (row[k] || 0), 0);
+  }
+  return 0;
+}
+
+function locationTotal(row) {
+  return activeSeries().reduce((sum, s) => sum + getRowValue(row, s.key), 0);
+}
 // Only sums series that are currently switched on, so bubble sizes and the
 // table stay consistent with whatever is deselected in the legend.
-function locationTotal(row) {
-  return activeSeries().reduce((sum, s) => sum + (row[s.key] || 0), 0);
-}
+// function locationTotal(row) {
+//  return activeSeries().reduce((sum, s) => sum + (row[s.key] || 0), 0);
+// }
 
 // The series key an individual infra point maps to under the current view mode.
 // Returns null when the point's subtype has no matching series (e.g. the
 // PDOT/SIIC/IISC bundle in "Fully disaggregated", which is split across three
 // series that individual points cannot be attributed to).
 function seriesKeyForPoint(point) {
-  if (datasetMode === "allIndia") {
-    const key = ALL_INDIA_SUBTYPE_KEY[point.subtype];
-    return key && currentSeries().some((s) => s.key === key) ? key : null;
-  }
   const meta = POINT_SUBTYPE_META[point.subtype];
   if (!meta) return null;
   if (viewMode === "domain") return `${meta.domain}_total`;
@@ -644,9 +666,9 @@ function renderTable(level) {
     `<span>Selected total</span></div>`;
 
   const cellsFor = (row) =>
-    series
-      .map((s) => `<span${activeCategories.has(s.key) ? "" : ' class="col-off"'}>${format.format(row[s.key] || 0)}</span>`)
-      .join("");
+  series
+    .map((s) => `<span${activeCategories.has(s.key) ? "" : ' class="col-off"'}>${format.format(getRowValue(row, s.key))}</span>`)
+    .join("");
 
   let body;
   if (grouped) {
