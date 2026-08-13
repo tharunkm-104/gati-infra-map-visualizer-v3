@@ -9,6 +9,7 @@ const HOVER_DELAY_MS = 550;
 // Series colours below are spaced for contrast: health sits on the teal->cyan
 // axis, language on the yellow->brown axis, and no two adjacent series share a
 // lightness step. `ink: true` marks fills too light for white label text.
+
 const GATI = {
   teal: "#006B76",
   tealDeep: "#00333A",
