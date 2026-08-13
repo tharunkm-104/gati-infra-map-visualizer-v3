@@ -222,9 +222,10 @@ function isPointActive(point) {
   return activeCategories.has(key);
 }
 
-function isOwnershipActive(point) {
-  if (datasetMode !== "allIndia") return true;
-  return activeOwnership.has(point.ownership || "Not specified");
+// The ownership filter control was removed. Ownership still shows on hover and
+// in the summary strip, but no longer gates which points draw.
+function isOwnershipActive() {
+  return true;
 }
 
 // Pilot NABH rows carry an eligibilityFlag from reconcile_flags.py. With the
@@ -552,26 +553,16 @@ function renderAggregateSummary() {
     return;
   }
 
-  const mapped = mappedPointCounts();
+  // One number per category: the count in the consolidated table. The old
+  // "counted vs mapped" pair compared two things never meant to match --
+  // prep/audit_pilot_reconciliation.py does that comparison properly, per
+  // facility, which is where it belongs.
   let grandCounted = 0;
-  let grandMapped = 0;
-
   const items = countableSeries()
     .map((s) => {
       const counted = cities.reduce((sum, c) => sum + (c[s.key] || 0), 0);
-      const points = mapped.get(s.key) || 0;
       grandCounted += counted;
-      grandMapped += points;
-
-      // Flag the two ways the official count and the map can disagree, so a
-      // gap in the source data never looks like a rendering bug.
-      let detail = "";
-      if (points === 0 && counted > 0) {
-        detail = `<span class="summary-gap">counts only \u2014 no mapped points</span>`;
-      } else if (points !== counted) {
-        detail = `<span class="summary-gap">${format.format(points)} mapped</span>`;
-      }
-
+      const detail = s.countsOnly ? `<span class="summary-gap">not geocoded</span>` : "";
       const off = activeCategories.has(s.key) ? "" : " summary-item--off";
       return `<div class="summary-item${off}">
         <span class="swatch" style="background:${s.color}"></span>
@@ -589,13 +580,11 @@ function renderAggregateSummary() {
   const eligibilityNote = nabhEligibleOnly
     ? `<span class="summary-gap">${format.format(excluded)} NABH rows corridor-ineligible, hidden &middot; ${format.format(uncertain)} unresolved, drawn hollow</span>`
     : `<span class="summary-gap">${format.format(excluded)} corridor-ineligible and ${format.format(uncertain)} unresolved NABH rows shown</span>`;
-  const centroidNote = trueCoordsOnly
-    ? `<span class="summary-gap">${format.format(centroidCount)} provisional (hollow) points</span>`
-    : `<span class="summary-gap">${format.format(centroidCount)} provisional (hollow) points</span>`;
+  const centroidNote = `<span class="summary-gap">${format.format(centroidCount)} provisional (hollow) points</span>`;
 
   host.innerHTML =
     `<div class="summary-title">All 15 cities &middot; ${VIEW_MODES[viewMode].label} &middot; ` +
-    `${format.format(grandCounted)} counted &middot; ${format.format(grandMapped)} mapped &middot; ${centroidNote} &middot; ${eligibilityNote}</div>` +
+    `${format.format(grandCounted)} facilities &middot; ${centroidNote} &middot; ${eligibilityNote}</div>` +
     `<div class="summary-items">${items}</div>`;
 }
 
@@ -737,7 +726,6 @@ document.querySelectorAll(".dataset-button").forEach((button) => {
     document.body.classList.toggle("all-india-mode", datasetMode === "allIndia");
     resetActiveCategories();
     activeOwnership = new Set(["Government", "Private", "Not specified"]);
-    document.querySelectorAll(".ownership-toggle input").forEach((i) => (i.checked = true));
     renderAggregateSummary();
     drawMarkers();
   });
@@ -756,15 +744,6 @@ if (nabhToggle) {
     drawMarkers();
   });
 }
-
-document.querySelectorAll(".ownership-toggle input").forEach((input) => {
-  input.addEventListener("change", () => {
-    const key = input.dataset.ownership;
-    if (input.checked) activeOwnership.add(key);
-    else activeOwnership.delete(key);
-    drawMarkers();
-  });
-});
 
 const trueCoordsToggle = document.getElementById("true-coords-toggle");
 if (trueCoordsToggle) {
