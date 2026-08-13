@@ -3,27 +3,43 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Infrastructure Map</title>
+    <title>GATI &middot; Infrastructure Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
+    <header class="site-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-text">
+          <strong>GATI</strong>
+          <small>Global Access to Talent from India</small>
+        </span>
+      </div>
+      <h1 class="site-title">German Language &amp; Health Infrastructure Map</h1>
+      <div class="dataset-row" role="group" aria-label="Dataset">
+        <button class="dataset-button active" data-dataset="pilot" type="button">15-City Pilot</button>
+        <button class="dataset-button" data-dataset="allIndia" type="button">All-India</button>
+      </div>
+    </header>
+
     <main class="app-shell">
       <section class="map-pane" aria-label="Infrastructure map">
-        <header class="topbar">
-          <h1>Infrastructure Map</h1>
-          <label class="coord-toggle" for="true-coords-toggle">
+        <div class="topbar">
+          <label class="pill-toggle" for="true-coords-toggle">
             <input type="checkbox" id="true-coords-toggle">
             True coordinates only
           </label>
-        </header>
-
-        <div id="aggregate-summary" class="aggregate-summary" aria-label="Totals across all tracked cities"></div>
-
-        <div class="dataset-row" role="group" aria-label="Dataset">
-          <button class="dataset-button active" data-dataset="pilot" type="button">15-City Pilot (Lang + Health)</button>
-          <button class="dataset-button" data-dataset="allIndia" type="button">All-India Health (NABH + NMC + INC)</button>
+          <label class="pill-toggle" for="nabh-eligible-toggle">
+            <input type="checkbox" id="nabh-eligible-toggle" checked>
+            NABH corridor-eligible only
+          </label>
         </div>
+
+        <div id="aggregate-summary" class="aggregate-summary" aria-label="Totals across the current dataset"></div>
 
         <div id="map" role="application" aria-label="Map of tracked infrastructure"></div>
 
@@ -36,6 +52,18 @@
             <button class="mode-button" data-mode="full" type="button">Fully disaggregated</button>
           </div>
           <div id="legend" class="legend" aria-label="Legend"></div>
+          <fieldset class="ownership-row" aria-label="Ownership filter">
+            <legend>Ownership</legend>
+            <label class="ownership-toggle ownership-toggle--govt">
+              <input type="checkbox" data-ownership="Government" checked> Government
+            </label>
+            <label class="ownership-toggle ownership-toggle--pvt">
+              <input type="checkbox" data-ownership="Private" checked> Private
+            </label>
+            <label class="ownership-toggle ownership-toggle--na">
+              <input type="checkbox" data-ownership="Not specified" checked> Not specified
+            </label>
+          </fieldset>
         </div>
       </section>
 
