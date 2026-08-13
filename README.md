@@ -58,37 +58,62 @@ Then visit `http://127.0.0.1:5177/src/index.html`.
 
 # prep/ — data pipeline
 
-Every JSON in `data/` is generated. Run these from the **repo root**, not from
-inside `prep/`, because the scripts use paths like `data/all-india-states.json`.
+Every JSON in `data/` is generated. Run from the **repo root**, not from inside
+`prep/`, because the scripts use paths like `data/all-india-states.json`.
 
 ```bash
 cd gati-infra-map-visualizer-v3
-python3 prep/build_all_india_health.py     # 1
-python3 prep/build_all_india_language.py   # 2
-python3 prep/build_all_india_rollups.py    # 3  always last
-python3 prep/audit_pilot_nabh.py           # 4  independent, any time
+python3 prep/build_all_india_health.py         # 1
+python3 prep/build_all_india_language.py       # 2
+python3 prep/build_all_india_rollups.py        # 3  always last
+python3 prep/flag_out_of_india.py              # 4  audit, AFTER step 3
+python3 prep/audit_pilot_nabh.py               # audit, any time
+python3 prep/audit_pilot_reconciliation.py     # audit, any time
 ```
 
 ## Why the order matters
 
 Steps 1 and 2 each write a *point* file and nothing else. Step 3 reads **both**
-of those point files, applies `data/manual-overrides.json`, and writes the three
-tables the dashboard actually reads (`all-india-states.json`,
-`all-india-cities.json`, `all-india-coverage.json`).
+point files, applies `data/manual-overrides.json`, and writes everything the
+dashboard actually loads.
 
-So if you re-run step 2 alone and stop, the point file is fresh but the state
-and city tables still hold the previous run's totals, and the dashboard will
-show stale counts. **Any time you touch a source or an override, finish with
-step 3.**
+Re-run step 2 alone and stop, and the point file is fresh while the tables and
+the map still hold the previous run's data. **Any time you touch a source or an
+override, finish with step 3.** Steps 1 and 2 are independent of each other. The
+audit scripts only read; they never feed the dashboard.
 
-Steps 1 and 2 are independent of each other and can run in either order.
+## The dashboard reads the RESOLVED point file
+
+`src/app.js` fetches `data/all-india-points.json` — both layers merged with
+`manual-overrides.json` applied — not the two raw `*-points.json` files. That is
+why step 3 is mandatory: without it a hand correction reaches the tables but
+never the map. The raw layers stay untouched, so a correction is always visible
+as a diff against them.
+
+## Fixing bad coordinates
+
+```bash
+python3 prep/flag_out_of_india.py               # writes data/out-of-india-points.csv
+# fill in corrected_latitude / corrected_longitude
+python3 prep/apply_coordinate_corrections.py    # --dry-run first if you like
+python3 prep/build_all_india_rollups.py         # corrections reach map + tables
+```
+
+`apply_coordinate_corrections.py` writes nothing unless every row passes: the
+corrected coordinate parses as a number, lands inside India, and the match
+criteria identify exactly one point. It tags its own rules, so re-running
+replaces them rather than accumulating duplicates, and leaves hand-written rules
+alone.
 
 | Script | Reads | Writes |
 |---|---|---|
 | `build_all_india_health.py` | workbook, `nabh_raw_rows.jsonl` | `all-india-health-points.json` |
 | `build_all_india_language.py` | `prep/sources/*.tsv`, uploaded language JSON | `all-india-language-points.json` |
-| `build_all_india_rollups.py` | both point files, `manual-overrides.json` | states, cities, coverage |
-| `audit_pilot_nabh.py` | `infrastructure-cleaned.json`, `city-summary.json` | `pilot-nabh-audit.json` |
+| `build_all_india_rollups.py` | both point files, `manual-overrides.json` | **`all-india-points.json`**, states, cities, coverage |
+| `flag_out_of_india.py` | `all-india-points.json`, pilot layer | `out-of-india-points.csv` |
+| `apply_coordinate_corrections.py` | corrected `out-of-india-points.csv` | rules in `manual-overrides.json` |
+| `audit_pilot_nabh.py` | pilot layer, `city-summary.json` | `pilot-nabh-audit.json` |
+| `audit_pilot_reconciliation.py` | pilot layer, `cities.json` | `pilot-reconciliation.csv` |
 | `enrich_language_v3.py` | pilot layer | rewrites `infrastructure-cleaned.json`, `cities.json` |
 | `normalize.py`, `reconcile_flags.py` | 15-city pilot sources | `infrastructure-cleaned.json` |
 
@@ -99,10 +124,9 @@ Steps 1 and 2 are independent of each other and can run in either order.
 language JSON. Those files are **not in the repo** (the JSONL alone is 8 MB).
 Before running on another machine, either move them into the repo and update the
 constants at the top of each script, or set the env vars the language script
-already supports (`ALL_INDIA_LANG_JSON`, `IISC_TSV_SRC`).
+supports (`ALL_INDIA_LANG_JSON`, `IISC_TSV_SRC`).
 
-Everything in `prep/sources/` **is** in the repo and is hand-maintained — new
-PDOT or SIIC centres go straight into the TSV, then step 2, then step 3.
+Everything in `prep/sources/` **is** in the repo and is hand-maintained.
 
 ## Hand corrections
 
