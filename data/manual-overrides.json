@@ -1,0 +1,55 @@
+{
+  "_readme": [
+    "WHAT THIS FILE IS FOR",
+    "Hand corrections to the ALL-INDIA point layers, applied by prep/build_all_india_rollups.py.",
+    "Edit here, re-run that script, and the fix survives every future rebuild of the source layers.",
+    "Never hand-edit all-india-health-points.json or all-india-language-points.json: those are",
+    "regenerated from the workbook, the JSONL and the TSVs, and your edits would be overwritten.",
+    "",
+    "HOW A RULE WORKS",
+    "  match  - any subset of point fields (name, city, state, subtype, source, latitude...).",
+    "           Compared as strings, case-insensitively. ALL listed fields must match.",
+    "  set    - fields to overwrite on the matched point.",
+    "  drop   - true removes the point entirely.",
+    "  _disabled - true parks a rule without deleting it. The examples below are parked.",
+    "The FIRST matching rule wins per point, so put narrow rules above broad ones.",
+    "Corrected points are tagged manuallyEdited:true so you can audit them later.",
+    "",
+    "WHEN TO REACH FOR IT",
+    "  1. A coordinate is plainly wrong (facility lands in the sea, or in the wrong state).",
+    "  2. The same facility appears twice under two source lists - drop one.",
+    "  3. A city or state is blank or misspelled and you know the right value.",
+    "  4. An ownership value is wrong for a specific institution.",
+    "Anything systematic - a whole category mis-classified, a parsing rule that fails for",
+    "hundreds of rows - belongs in the prep script, not here. This file is for one-offs.",
+    "",
+    "FOR THE 15-CITY PILOT LAYER, edit via prep/reconcile_flags.py instead: that layer has its",
+    "own eligibility and coordinate-flag pipeline and does not read this file."
+  ],
+  "overrides": [
+    {
+      "_comment": "REAL, and live. PDOT entry 31 and SIIC Varanasi are the same building at the same coordinate (25.2710223, 82.9824651). The SIIC list is the authoritative one for this facility, so the PDOT duplicate is dropped to stop it being counted twice in pdot_siics.",
+      "match": {
+        "name": "PDOT — Skill India International Center (SIIC), Varanasi",
+        "subtype": "PDOT Centre"
+      },
+      "drop": true
+    },
+    {
+      "_comment": "EXAMPLE - parked. Fixing a wrong coordinate. Set coordinateStatus to researched_override so the audit trail shows it was corrected, not sourced.",
+      "_disabled": true,
+      "match": { "name": "Some Hospital", "city": "Pune" },
+      "set": {
+        "latitude": 18.5204,
+        "longitude": 73.8567,
+        "coordinateStatus": "researched_override"
+      }
+    },
+    {
+      "_comment": "EXAMPLE - parked. Filling in a missing city so the point reaches a city row instead of only the state view.",
+      "_disabled": true,
+      "match": { "name": "Some Facility", "state": "Kerala", "city": "" },
+      "set": { "city": "Kozhikode" }
+    }
+  ]
+}
