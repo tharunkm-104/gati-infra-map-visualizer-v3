@@ -595,7 +595,7 @@ body.all-india-mode .pill-toggle {
 
 .bottom-bar .legend {
   margin-left: auto;
-  margin-right: 46px;
+  margin-right: 0;
   max-width: 260px;
   max-height: 46vh;
   overflow-y: auto;
@@ -603,7 +603,7 @@ body.all-india-mode .pill-toggle {
 
 .ownership-row {
   margin: 0 46px 0 auto;
-  display: grid;
+  display: none;
   gap: 5px;
   border: 1px solid var(--line);
   border-radius: 8px;
