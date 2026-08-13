@@ -705,6 +705,28 @@
         "longitude": 87.9925839,
         "coordinateStatus": "researched_override"
       }
+    },
+    {
+      "_comment": "Geocoded to Colombo, Sri Lanka. Corrected to Sector 29, Gurugram.",
+      "match": {
+        "name": "Vasan Eye Care Hospital, SCO -379 &380, Sector -29"
+      },
+      "set": {
+        "latitude": 28.47189410782642,
+        "longitude": 77.07220477747582,
+        "coordinateStatus": "researched_override"
+      }
+    },
+    {
+      "_comment": "Geocoded to Colombo, Sri Lanka. Corrected to Pune. NOTE: source name uses '&', not 'and'.",
+      "match": {
+        "name": "Dr Prasanna Dental Clinic & Implant Centre"
+      },
+      "set": {
+        "latitude": 18.47192708222247,
+        "longitude": 73.88892637690061,
+        "coordinateStatus": "researched_override"
+      }
     }
   ]
 }
