@@ -4,46 +4,81 @@ const HOVER_DELAY_MS = 550;
 // ---- GATI palette tokens ----
 // Health scale: NABH recedes into the basemap grey, colleges pop.
 // Language/skilling scale: warm orange + gold steps, entirely separate from health hues.
+// Guidebook primaries: teal #006B76, deep teal #00333A, yellow #E5A812,
+// light gold #FFCC4E, sky #84D2E2, brown #573D00, greys #839097 / #D8E2E7.
+// Series colours below are spaced for contrast: health sits on the teal->cyan
+// axis, language on the yellow->brown axis, and no two adjacent series share a
+// lightness step. `ink: true` marks fills too light for white label text.
 const GATI = {
-  inkMuted: "#9AA3AB",   // --ink-300/400 grey-teal (NABH, high-volume, recessive)
-  teal: "#006B76",       // nursing colleges
-  gold: "#48878F",       // medical colleges
-  goldBright: "#E5A812",
-  orange: "#F39821",     // formal German / Goethe
-  goldDeep: "#9E7619",   // HEIs offering German
-  goldDeepest: "#7C5C18" // general skilling
+  teal: "#006B76",
+  tealDeep: "#00333A",
+  tealDark: "#00333A",
+  sky: "#84D2E2",
+  cyan: "#2E9BAF",
+  yellow: "#E5A812",
+  goldLight: "#FFCC4E",
+  brown: "#573D00",
+  rust: "#B04A00",
+  olive: "#7D8C3F",
+  grey: "#839097",
+  greyLight: "#D8E2E7",
+  ink: "#101A18",
 };
+
+// Health series -- deep teal / mid cyan / grey. NABH stays recessive because it
+// outnumbers the colleges by an order of magnitude.
+const C_NABH = GATI.grey;
+const C_NMC = GATI.tealDeep;
+const C_INC = GATI.cyan;
+// Language series -- yellow through brown, each a clear step apart.
+const C_GOETHE = GATI.yellow;
+const C_EXAM = GATI.goldLight;
+const C_HEI = GATI.rust;
+const C_PDOT = GATI.brown;
+const C_IISC = GATI.olive;
+const C_PRIVATE_LANG = GATI.grey;
+
+// Fills light enough that white label text would fail contrast.
+const LIGHT_FILLS = new Set([GATI.goldLight, GATI.sky, GATI.greyLight]);
+function labelInk(color) {
+  return LIGHT_FILLS.has(color) ? GATI.ink : "#ffffff";
+}
 
 // ---- view mode definitions (raw counts only, no derived scores) ----
 const VIEW_MODES = {
   domain: {
     label: "Language vs Health",
     series: [
-      { key: "language_total", label: "Language Infrastructure", color: GATI.orange },
-      { key: "health_total", label: "Health Infrastructure", color: GATI.teal },
+      { key: "language_total", label: "Language Infrastructure", color: C_GOETHE },
+      { key: "health_total", label: "Health Infrastructure", color: C_NMC },
     ],
   },
   pairs: {
     label: "By category pair",
     series: [
-      { key: "formal_german_raw", label: "Formal German Infrastructure (Goethe/PASCH/Zentrum + HEIs + Exam Centres)", color: GATI.orange },
-      { key: "general_skilling_raw", label: "General Skilling Infrastructure (PDOT/SIIC/IISC)", color: GATI.goldDeepest },
-      { key: "nursing_colleges", label: "INC Nursing Colleges", color: GATI.teal },
-      { key: "medical_colleges", label: "NMC Medical Colleges", color: GATI.gold },
-      { key: "health_facilities", label: "NABH Accredited Health Facilities", color: GATI.inkMuted },
+      { key: "formal_german_raw", label: "Formal German Infrastructure (Goethe/PASCH/Zentrum + HEIs + Exam Centres)", color: C_GOETHE },
+      { key: "general_skilling_raw", label: "General Skilling Infrastructure (PDOT/SIIC/IISC + Private Training)", color: C_PDOT },
+      { key: "nursing_colleges", label: "INC Nursing Colleges", color: C_INC },
+      { key: "medical_colleges", label: "NMC Medical Colleges", color: C_NMC },
+      { key: "health_facilities", label: "NABH Accredited Health Facilities", color: C_NABH },
     ],
   },
   full: {
     label: "Fully disaggregated",
     series: [
-      { key: "goethe_schools", label: "Goethe/PASCH/Zentrum Schools", color: GATI.orange },
-      { key: "heis_german", label: "HEIs Offering German", color: GATI.goldDeep },
-      { key: "exam_centres", label: "Goethe/TELC Exam Centres", color: GATI.goldBright },
-      { key: "pdot_siics", label: "PDOT/SIIC Centres", color: GATI.goldDeepest },
-      { key: "iiscs", label: "IISC Centres", color: "#B0821C" },
-      { key: "nursing_colleges", label: "INC Nursing Colleges", color: GATI.teal },
-      { key: "medical_colleges", label: "NMC Medical Colleges", color: GATI.gold },
-      { key: "health_facilities", label: "NABH Accredited Health Facilities", color: GATI.inkMuted },
+      { key: "goethe_schools", label: "Goethe/PASCH/Zentrum Schools", color: C_GOETHE },
+      { key: "heis_german", label: "HEIs Offering German", color: C_HEI },
+      { key: "exam_centres", label: "Goethe/TELC Exam Centres", color: C_EXAM },
+      { key: "pdot_siics", label: "PDOT/SIIC Centres", color: C_PDOT },
+      { key: "iiscs", label: "IISC Centres", color: C_IISC },
+      // Counts only -- private German training organisations are reported as
+      // city totals with no geocoded addresses, so this chip moves a table
+      // column and the aggregate figure but never draws a dot. Without it the
+      // disaggregated view would silently total 548 fewer than the other two.
+      { key: "private_training", label: "Private German Training Organisations", color: C_PRIVATE_LANG, countsOnly: true },
+      { key: "nursing_colleges", label: "INC Nursing Colleges", color: C_INC },
+      { key: "medical_colleges", label: "NMC Medical Colleges", color: C_NMC },
+      { key: "health_facilities", label: "NABH Accredited Health Facilities", color: C_NABH },
     ],
   },
 };
@@ -66,8 +101,8 @@ const POINT_SUBTYPE_META = {
   "INC Nursing College": { domain: "health", pairsKey: "nursing_colleges", fullKey: "nursing_colleges" },
 };
 
-const DOMAIN_COLOR = { language: GATI.orange, health: GATI.teal };
-const FALLBACK_COLOR = GATI.inkMuted;
+const DOMAIN_COLOR = { language: C_GOETHE, health: C_NMC };
+const FALLBACK_COLOR = GATI.grey;
 
 const CITY_PALETTE = [...d3.schemeTableau10, ...d3.schemeSet3];
 let cityColorScale = null;
@@ -81,7 +116,10 @@ let renderableInfrastructure = [];
 let trueCoordsOnly = false; // when true, hides pin_centroid ("hollow dot") points
 let datasetMode = "pilot"; // "pilot" (15-city language+health) | "allIndia" (NABH+NMC+INC)
 let allIndiaStates = [];
+let allIndiaCities = [];
 let allIndiaPoints = [];
+let allIndiaCoverage = null;
+let nabhEligibleOnly = true; // pilot layer: drop NABH rows flagged EXCLUDED/UNCERTAIN
 let activeOwnership = new Set(["Government", "Private", "Not specified"]);
 let viewMode = "domain";
 let forcedLevel = "auto";
@@ -110,11 +148,22 @@ const infraCanvas = L.canvas({ padding: 0.3 });
 
 // ---- All-India Health dataset (NABH + NMC + INC) ----
 const ALL_INDIA_SERIES = [
-  { key: "nabh_facilities", label: "NABH Accredited Health Facilities", color: GATI.inkMuted },
-  { key: "nmc_colleges", label: "NMC Medical Colleges", color: GATI.gold },
-  { key: "inc_colleges", label: "INC Nursing Colleges", color: GATI.teal },
+  { key: "goethe_schools", label: "Goethe-Institut / Zentrum", color: C_GOETHE },
+  { key: "exam_centres", label: "Goethe/TELC Exam Centres", color: C_EXAM },
+  { key: "heis_german", label: "HEIs Offering German", color: C_HEI },
+  { key: "pdot_siics", label: "PDOT/SIIC Centres", color: C_PDOT },
+  { key: "iiscs", label: "IISC Centres", color: C_IISC },
+  { key: "nabh_facilities", label: "NABH Accredited Health Facilities", color: C_NABH },
+  { key: "nmc_colleges", label: "NMC Medical Colleges", color: C_NMC },
+  { key: "inc_colleges", label: "INC Nursing Colleges", color: C_INC },
 ];
 const ALL_INDIA_SUBTYPE_KEY = {
+  "Goethe/PASCH/Zentrum School": "goethe_schools",
+  "Goethe/TELC Exam Centre": "exam_centres",
+  "HEI Offering German": "heis_german",
+  "PDOT Centre": "pdot_siics",
+  "SIIC Centre": "pdot_siics",
+  "IISC Centre (PMKK)": "iiscs",
   "NABH Accredited Health Facility": "nabh_facilities",
   "NMC Medical College": "nmc_colleges",
   "INC Nursing College": "inc_colleges",
@@ -138,14 +187,8 @@ function resetActiveCategories() {
 }
 
 function safeLevel() {
-  if (forcedLevel !== "auto") {
-    if (datasetMode === "allIndia" && forcedLevel === "city") return "state";
-    return forcedLevel;
-  }
+  if (forcedLevel !== "auto") return forcedLevel;
   const zoom = map.getZoom();
-  if (datasetMode === "allIndia") {
-    return zoom <= 6 ? "state" : "infrastructure";
-  }
   if (zoom <= 6) return "state";
   if (zoom <= 9) return "city";
   return "infrastructure";
@@ -184,14 +227,34 @@ function isOwnershipActive(point) {
   return activeOwnership.has(point.ownership || "Not specified");
 }
 
+// Pilot NABH rows carry an eligibilityFlag from reconcile_flags.py. With the
+// toggle on, EXCLUDED rows (AYUSH, labs, imaging, blood banks, dental clinics,
+// ethics committees) come off the map entirely, but UNCERTAIN rows stay and are
+// drawn hollow: they have real coordinates, and the 107-facility gap between
+// the consolidated table and the eligible points sits inside this class, so
+// hiding them outright would erase exactly the rows that need validating.
+function isEligiblePilotPoint(p) {
+  if (!nabhEligibleOnly) return true;
+  if (p.subtype !== "NABH Accredited Health Facility") return true;
+  return p.eligibilityFlag !== "EXCLUDED";
+}
+
+// Hollow = "do not trust this dot as-is": either the coordinate is approximate,
+// or the facility's corridor eligibility could not be resolved.
+function isProvisionalPoint(p) {
+  return p.coordinateStatus === "pin_centroid" || p.eligibilityFlag === "UNCERTAIN";
+}
+
 function coordinateFilteredInfrastructure() {
-  if (!trueCoordsOnly) return renderableInfrastructure;
-  return renderableInfrastructure.filter((p) => p.coordinateStatus !== "pin_centroid");
+  return renderableInfrastructure.filter(
+    (p) => isEligiblePilotPoint(p) && (!trueCoordsOnly || p.coordinateStatus !== "pin_centroid")
+  );
 }
 
 function pointsForLevel(level) {
   if (datasetMode === "allIndia") {
     if (level === "state") return allIndiaStates.map((s) => ({ ...s, levelName: s.state }));
+    if (level === "city") return allIndiaCities.map((c) => ({ ...c, levelName: c.city }));
     return allIndiaPoints.filter((p) => isPointActive(p) && isOwnershipActive(p));
   }
   if (level === "state") return states.map((s) => ({ ...s, levelName: s.state }));
@@ -271,8 +334,14 @@ function radiusForTotal(total, maxTotal) {
   return Math.round(20 + ratio * 46);
 }
 
+// The table/bubble rows behind a given zoom level, for whichever dataset is on.
+function rowsForLevel(level) {
+  if (datasetMode === "allIndia") return level === "city" ? allIndiaCities : allIndiaStates;
+  return level === "state" ? states : cities;
+}
+
 function maxTotalForLevel(level) {
-  const rows = datasetMode === "allIndia" ? allIndiaStates : level === "state" ? states : cities;
+  const rows = rowsForLevel(level);
   return Math.max(1, ...rows.map((r) => locationTotal(r)));
 }
 
@@ -334,7 +403,7 @@ function infrastructureMarker(point, latitude, longitude) {
   const color = pointColor(point);
   // Approximate coordinates (PIN-code centroids, shared points) render hollow:
   // coloured ring, no fill, so precision is visible at a glance.
-  const approximate = point.coordinateStatus === "pin_centroid";
+  const approximate = isProvisionalPoint(point);
   const marker = L.circleMarker([latitude, longitude], {
     renderer: infraCanvas,
     radius: approximate ? 5 : 4.5,
@@ -366,6 +435,8 @@ function infrastructureDetailRows(point) {
   const fields = [
     ["Facility type", point.facilityType],
     ["Ownership", point.ownership],
+    ["Corridor eligibility flag", point.eligibilityFlag],
+    ["Status", point.status],
     ["NABH status", point.nabhStatus],
     ["Corridor eligibility", point.corridorEligibility],
   ];
@@ -466,9 +537,9 @@ function renderAggregateSummary() {
       </div>`;
     }).join("");
     host.innerHTML =
-      `<div class="summary-title">All-India Health (NABH + NMC + INC) &middot; ${allIndiaStates.length} states/UTs &middot; ` +
-      `${format.format(grandCounted)} facilities &middot; ` +
-      `<span class="summary-gap">ownership split shown for NMC + INC only ` +
+      `<div class="summary-title">All-India (Language + Health) &middot; ${allIndiaStates.length} states/UTs &middot; ` +
+      `${format.format(grandCounted)} points &middot; ` +
+      `<span class="summary-gap">ownership split shown for every layer except NABH ` +
       `(${format.format(government + privateCount)} of ${format.format(grandCounted)}): ` +
       `${format.format(government)} government, ${format.format(privateCount)} private</span> &middot; ` +
       `<span class="summary-gap">NABH source carries no per-facility ownership field</span></div>` +
@@ -511,19 +582,25 @@ function renderAggregateSummary() {
     })
     .join("");
 
-  const centroidCount = renderableInfrastructure.filter((p) => p.coordinateStatus === "pin_centroid").length;
+  const centroidCount = coordinateFilteredInfrastructure().filter(isProvisionalPoint).length;
+  const nabhRows = renderableInfrastructure.filter((p) => p.subtype === "NABH Accredited Health Facility");
+  const excluded = nabhRows.filter((p) => p.eligibilityFlag === "EXCLUDED").length;
+  const uncertain = nabhRows.filter((p) => p.eligibilityFlag === "UNCERTAIN").length;
+  const eligibilityNote = nabhEligibleOnly
+    ? `<span class="summary-gap">${format.format(excluded)} NABH rows corridor-ineligible, hidden &middot; ${format.format(uncertain)} unresolved, drawn hollow</span>`
+    : `<span class="summary-gap">${format.format(excluded)} corridor-ineligible and ${format.format(uncertain)} unresolved NABH rows shown</span>`;
   const centroidNote = trueCoordsOnly
-    ? `<span class="summary-gap">${format.format(centroidCount)} approximate (hollow-dot) points hidden</span>`
-    : `<span class="summary-gap">${format.format(centroidCount)} approximate (hollow-dot) points shown</span>`;
+    ? `<span class="summary-gap">${format.format(centroidCount)} provisional (hollow) points</span>`
+    : `<span class="summary-gap">${format.format(centroidCount)} provisional (hollow) points</span>`;
 
   host.innerHTML =
     `<div class="summary-title">All 15 cities &middot; ${VIEW_MODES[viewMode].label} &middot; ` +
-    `${format.format(grandCounted)} counted &middot; ${format.format(grandMapped)} mapped &middot; ${centroidNote}</div>` +
+    `${format.format(grandCounted)} counted &middot; ${format.format(grandMapped)} mapped &middot; ${centroidNote} &middot; ${eligibilityNote}</div>` +
     `<div class="summary-items">${items}</div>`;
 }
 
 // ---- legend ----
-const OWNERSHIP_COLORS = { Government: "#2f6f4f", Private: "#b3541e", "Not specified": "#8a8f98" };
+const OWNERSHIP_COLORS = { Government: GATI.teal, Private: GATI.rust, "Not specified": GATI.grey };
 
 function renderLegend() {
   const legend = document.getElementById("legend");
@@ -533,25 +610,14 @@ function renderLegend() {
       .map((s) => {
         const on = activeCategories.has(s.key);
         const style = on
-          ? `background:${s.color};border-color:${s.color};color:#fff;`
+          ? `background:${s.color};border-color:${s.color};color:${labelInk(s.color)};`
           : `background:transparent;border-color:${s.color};color:${s.color};`;
-        return `<button type="button" class="legend-chip${on ? " active" : ""}" data-key="${s.key}" aria-pressed="${on}" style="${style}"><span class="chip-dot" style="background:${on ? "#fff" : s.color}"></span>${s.label}</button>`;
+        const dot = on ? labelInk(s.color) : s.color;
+        const note = s.countsOnly ? '<span class="chip-note">counts only</span>' : "";
+        return `<button type="button" class="legend-chip${on ? " active" : ""}" data-key="${s.key}" aria-pressed="${on}" style="${style}"><span class="chip-dot" style="background:${dot}"></span>${s.label}${note}</button>`;
       })
       .join("");
-    let ownershipChips = "";
-    if (datasetMode === "allIndia") {
-      ownershipChips = Object.keys(OWNERSHIP_COLORS)
-        .map((k) => {
-          const on = activeOwnership.has(k);
-          const color = OWNERSHIP_COLORS[k];
-          const style = on
-            ? `background:${color};border-color:${color};color:#fff;`
-            : `background:transparent;border-color:${color};color:${color};`;
-          return `<button type="button" class="legend-chip legend-chip--ownership${on ? " active" : ""}" data-ownership="${k}" aria-pressed="${on}" style="${style}"><span class="chip-dot" style="background:${on ? "#fff" : color}"></span>${k}</button>`;
-        })
-        .join("");
-    }
-    legend.innerHTML = categoryChips + (ownershipChips ? `<span class="legend-divider"></span>${ownershipChips}` : "");
+    legend.innerHTML = categoryChips;
     legend.querySelectorAll(".legend-chip[data-key]").forEach((chip) => {
       chip.addEventListener("click", () => {
         const key = chip.dataset.key;
@@ -561,45 +627,85 @@ function renderLegend() {
         drawMarkers();
       });
     });
-    legend.querySelectorAll(".legend-chip[data-ownership]").forEach((chip) => {
-      chip.addEventListener("click", () => {
-        const key = chip.dataset.ownership;
-        if (activeOwnership.has(key)) activeOwnership.delete(key);
-        else activeOwnership.add(key);
-        drawMarkers();
-      });
-    });
     return;
   }
-  const scopeLabel = datasetMode === "allIndia" ? "All-India Health" : VIEW_MODES[viewMode].label.toLowerCase();
+  const scopeLabel = datasetMode === "allIndia" ? "all-India infrastructure" : VIEW_MODES[viewMode].label.toLowerCase();
   legend.innerHTML = `<div class="legend-note">Bubble color reflects each ${level === "state" ? "state" : "city"}; bubble size reflects total ${scopeLabel} across selected categories.</div>`;
 }
 
 // ---- location table ----
+// All-India city rows are grouped under a state band so every city in a state
+// reads as one block; the state name and the city name are the two frozen
+// columns on the left, category counts scroll horizontally underneath.
 function renderTable(level) {
   renderLegend();
   const container = document.getElementById("location-table");
-  const rows = datasetMode === "allIndia" ? allIndiaStates : level === "state" ? states : cities;
-  const sorted = rows.slice().sort((a, b) => (a.levelName || a.city || a.state).localeCompare(b.levelName || b.city || b.state));
   const series = countableSeries();
-  // Drives the fixed-width grid columns in styles.css so the table scrolls
-  // horizontally instead of compressing.
   container.style.setProperty("--col-count", series.length);
-  const isStateLabel = datasetMode === "allIndia" || level === "state";
-  const head = `<div class="table-row table-head"><span>${isStateLabel ? "State" : "City"}</span>${series
-    .map((s) => `<span${activeCategories.has(s.key) ? "" : ' class="col-off"'}>${s.label}</span>`)
-    .join("")}</div>`;
-  const body = sorted
-    .map((row) => {
-      const cells = series
-        .map((s) => `<span${activeCategories.has(s.key) ? "" : ' class="col-off"'}>${format.format(row[s.key] || 0)}</span>`)
-        .join("");
-      const name = isStateLabel ? row.state : row.city;
-      return `<div class="table-row"><span>${name}</span>${cells}<span class="row-total">${format.format(locationTotal(row))}</span></div>`;
-    })
-    .join("");
-  container.innerHTML =
-    head.replace("</div>", "<span>Selected total</span></div>") + body;
+  const grouped = datasetMode === "allIndia" && level === "city";
+  container.classList.toggle("location-table--grouped", grouped);
+
+  const head =
+    `<div class="table-row table-head">` +
+    (grouped ? `<span>State</span><span>City</span>` : `<span>${datasetMode === "allIndia" || level === "state" ? "State" : "City"}</span>`) +
+    series.map((s) => `<span${activeCategories.has(s.key) ? "" : ' class="col-off"'}>${s.label}</span>`).join("") +
+    `<span>Selected total</span></div>`;
+
+  const cellsFor = (row) =>
+    series
+      .map((s) => `<span${activeCategories.has(s.key) ? "" : ' class="col-off"'}>${format.format(row[s.key] || 0)}</span>`)
+      .join("");
+
+  let body;
+  if (grouped) {
+    const byState = new Map();
+    allIndiaCities.forEach((row) => {
+      if (!byState.has(row.state)) byState.set(row.state, []);
+      byState.get(row.state).push(row);
+    });
+    body = [...byState.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([state, rows]) => {
+        const sorted = rows.slice().sort((a, b) => b.total - a.total || a.city.localeCompare(b.city));
+        const band =
+          `<div class="table-row table-band"><span>${state}</span>` +
+          `<span>${format.format(sorted.length)} ${sorted.length === 1 ? "city" : "cities"}</span>` +
+          series.map(() => `<span></span>`).join("") +
+          `<span class="row-total">${format.format(sorted.reduce((t, r) => t + locationTotal(r), 0))}</span></div>`;
+        return band + sorted
+          .map((row) =>
+            `<div class="table-row table-row--child"><span class="cell-state">${state}</span>` +
+            `<span>${row.city}</span>${cellsFor(row)}` +
+            `<span class="row-total">${format.format(locationTotal(row))}</span></div>`)
+          .join("");
+      })
+      .join("");
+  } else {
+    const rows = rowsForLevel(level);
+    const isStateLabel = datasetMode === "allIndia" || level === "state";
+    body = rows
+      .slice()
+      .sort((a, b) => (a.levelName || a.city || a.state).localeCompare(b.levelName || b.city || b.state))
+      .map(
+        (row) =>
+          `<div class="table-row"><span>${isStateLabel ? row.state : row.city}</span>${cellsFor(row)}` +
+          `<span class="row-total">${format.format(locationTotal(row))}</span></div>`
+      )
+      .join("");
+  }
+
+  container.innerHTML = coverageNoteHtml(level) + head + body;
+}
+
+// Says out loud how much of the layer could be placed on a city row, so a
+// missing city never looks like a missing facility.
+function coverageNoteHtml(level) {
+  if (datasetMode !== "allIndia" || level !== "city" || !allIndiaCoverage) return "";
+  const c = allIndiaCoverage;
+  return `<p class="table-note">${format.format(c.cities)} cities across ${format.format(c.states)} states/UTs.
+    ${format.format(c.cityAttributed)} of ${format.format(c.totalPoints)} points carry a city;
+    ${format.format(c.cityMissing)} do not and appear only in the state view and on the map.
+    City is parsed from free-text postal addresses, so only cities named in the source extracts appear here.</p>`;
 }
 
 // ---- controls ----
@@ -626,16 +732,9 @@ document.querySelectorAll(".dataset-button").forEach((button) => {
     datasetMode = button.dataset.dataset;
     document.querySelectorAll(".dataset-button").forEach((b) => b.classList.toggle("active", b === button));
     document.body.classList.toggle("all-india-mode", datasetMode === "allIndia");
-    const cityLevelButton = document.querySelector('.level-button[data-level="city"]');
-    if (cityLevelButton) cityLevelButton.disabled = datasetMode === "allIndia";
-    if (datasetMode === "allIndia" && forcedLevel === "city") {
-      forcedLevel = "state";
-      document.querySelectorAll(".level-button").forEach((b) =>
-        b.classList.toggle("active", b.dataset.level === "state")
-      );
-    }
     resetActiveCategories();
     activeOwnership = new Set(["Government", "Private", "Not specified"]);
+    document.querySelectorAll(".ownership-toggle input").forEach((i) => (i.checked = true));
     renderAggregateSummary();
     drawMarkers();
   });
@@ -643,6 +742,25 @@ document.querySelectorAll(".dataset-button").forEach((button) => {
 
 map.on("zoomend moveend", () => {
   drawMarkers();
+});
+
+const nabhToggle = document.getElementById("nabh-eligible-toggle");
+if (nabhToggle) {
+  nabhToggle.checked = nabhEligibleOnly;
+  nabhToggle.addEventListener("change", () => {
+    nabhEligibleOnly = nabhToggle.checked;
+    renderAggregateSummary();
+    drawMarkers();
+  });
+}
+
+document.querySelectorAll(".ownership-toggle input").forEach((input) => {
+  input.addEventListener("change", () => {
+    const key = input.dataset.ownership;
+    if (input.checked) activeOwnership.add(key);
+    else activeOwnership.delete(key);
+    drawMarkers();
+  });
 });
 
 const trueCoordsToggle = document.getElementById("true-coords-toggle");
@@ -671,14 +789,19 @@ Promise.all([
   fetch("../data/states.json").then((r) => r.json()),
   fetch("../data/infrastructure-cleaned.json").then((r) => r.json()),
   fetch("../data/all-india-states.json").then((r) => r.json()),
+  fetch("../data/all-india-cities.json").then((r) => r.json()),
+  fetch("../data/all-india-coverage.json").then((r) => r.json()),
   fetch("../data/all-india-health-points.json").then((r) => r.json()),
+  fetch("../data/all-india-language-points.json").then((r) => r.json()),
 ])
-  .then(([cityRows, stateRows, infraRows, allIndiaStateRows, allIndiaPointRows]) => {
+  .then(([cityRows, stateRows, infraRows, allIndiaStateRows, allIndiaCityRows, coverage, healthPoints, languagePoints]) => {
     cities = cityRows;
     states = stateRows;
     infrastructure = infraRows;
     allIndiaStates = allIndiaStateRows;
-    allIndiaPoints = allIndiaPointRows.filter(isRenderableInfra);
+    allIndiaCities = allIndiaCityRows;
+    allIndiaCoverage = coverage;
+    allIndiaPoints = [...healthPoints, ...languagePoints].filter(isRenderableInfra);
     renderableInfrastructure = infrastructure.filter(isRenderableInfra);
     cityColorScale = d3.scaleOrdinal().domain(cities.map((c) => c.city)).range(CITY_PALETTE);
     stateColorScale = d3.scaleOrdinal().domain(states.map((s) => s.state)).range(CITY_PALETTE);
