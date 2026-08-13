@@ -47,14 +47,14 @@ function labelInk(color) {
 // ---- view mode definitions (raw counts only, no derived scores) ----
 const VIEW_MODES = {
   domain: {
-    label: "Language vs Health",
+    label: "Language & Health",
     series: [
       { key: "language_total", label: "Language Infrastructure", color: C_GOETHE },
       { key: "health_total", label: "Health Infrastructure", color: C_NMC },
     ],
   },
   pairs: {
-    label: "By category pair",
+    label: "By Sector",
     series: [
       { key: "formal_german_raw", label: "Formal German Infrastructure (Goethe/PASCH/Zentrum + HEIs + Exam Centres)", color: C_GOETHE },
       { key: "general_skilling_raw", label: "General Skilling Infrastructure (PDOT/SIIC/IISC)", color: C_PDOT },
@@ -64,7 +64,7 @@ const VIEW_MODES = {
     ],
   },
   full: {
-    label: "Fully disaggregated",
+    label: "By Category",
     series: [
       { key: "goethe_schools", label: "Goethe/PASCH/Zentrum Schools", color: C_GOETHE },
       { key: "heis_german", label: "HEIs Offering German", color: C_HEI },
@@ -668,13 +668,35 @@ function coverageNoteHtml(level) {
 }
 
 // ---- controls ----
+// "Follow zoom" is a mode, not a level: with it on, the level buttons show
+// which level the current zoom resolves to but do not pin it. Clicking a level
+// pins that level and switches the mode off.
+const followZoomToggle = document.getElementById("follow-zoom-toggle");
+
+function syncLevelButtons() {
+  const active = safeLevel();
+  document.querySelectorAll(".level-button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.level === active);
+    b.classList.toggle("level-button--auto", forcedLevel === "auto");
+  });
+}
+
 document.querySelectorAll(".level-button").forEach((button) => {
   button.addEventListener("click", () => {
     forcedLevel = button.dataset.level;
-    document.querySelectorAll(".level-button").forEach((b) => b.classList.toggle("active", b === button));
+    if (followZoomToggle) followZoomToggle.checked = false;
+    syncLevelButtons();
     drawMarkers();
   });
 });
+
+if (followZoomToggle) {
+  followZoomToggle.addEventListener("change", () => {
+    if (followZoomToggle.checked) forcedLevel = "auto";
+    syncLevelButtons();
+    drawMarkers();
+  });
+}
 
 document.querySelectorAll(".mode-button").forEach((button) => {
   button.addEventListener("click", () => {
@@ -698,6 +720,7 @@ document.querySelectorAll(".dataset-button").forEach((button) => {
 });
 
 map.on("zoomend moveend", () => {
+  syncLevelButtons();
   drawMarkers();
 });
 
@@ -713,17 +736,31 @@ if (trueCoordsToggle) {
 const GRANULAR_KEYS = ["goethe_schools", "heis_german", "exam_centres", "pdot_siics",
                        "iiscs", "health_facilities", "medical_colleges", "nursing_colleges"];
 
+// City is the only location field every pilot point carries. NABH rows in
+// particular have state: null for all 3,847 of them, and the rows that do carry
+// a state spell it inconsistently ("Tamilnadu", "Delhi (NCT)"). So the state a
+// point belongs to is resolved from its city via cities.json, which is the one
+// authoritative city -> state mapping, rather than trusted from the point.
+let cityToState = new Map();
+
+function stateForPoint(p) {
+  return cityToState.get(p.city) || null;
+}
+
 // The pilot counts are RECOMPUTED from the points that actually render, rather
 // than read from the stored columns in cities.json / states.json. The stored
 // columns came from the consolidated table and disagreed with the map in a
 // dozen small ways (de-duplicated rows, ungeocoded rows, NABH rows we now drop
 // as corridor-ineligible). Deriving them means the card, the table and the dots
 // are three views of one number and cannot drift apart.
-function recountFromPoints(rows, labelKey, points) {
+//
+// `labelFor` maps a point to the row it belongs to, so city rows key on the
+// city and state rows key on the resolved state.
+function recountFromPoints(rows, labelKey, labelFor, points) {
   const byLabel = new Map(rows.map((r) => [r[labelKey], { ...r }]));
   byLabel.forEach((row) => GRANULAR_KEYS.forEach((k) => (row[k] = 0)));
   points.forEach((p) => {
-    const row = byLabel.get(p[labelKey]);
+    const row = byLabel.get(labelFor(p));
     if (!row) return; // e.g. the two telc centres in Noida, outside the 15 cities
     const meta = POINT_SUBTYPE_META[p.subtype];
     if (meta && row[meta.fullKey] !== undefined) row[meta.fullKey] += 1;
@@ -764,8 +801,9 @@ Promise.all([
     allIndiaCoverage = coverage;
     allIndiaPoints = allIndiaPointRows.filter(isRenderableInfra);
     renderableInfrastructure = infrastructure.filter(isRenderableInfra).filter(isEligiblePilotPoint);
-    cities = recountFromPoints(cities, "city", renderableInfrastructure);
-    states = recountFromPoints(states, "state", renderableInfrastructure);
+    cityToState = new Map(cities.map((c) => [c.city, c.state]));
+    cities = recountFromPoints(cities, "city", (p) => p.city, renderableInfrastructure);
+    states = recountFromPoints(states, "state", stateForPoint, renderableInfrastructure);
     cityColorScale = d3.scaleOrdinal().domain(cities.map((c) => c.city)).range(CITY_PALETTE);
     stateColorScale = d3.scaleOrdinal().domain(states.map((s) => s.state)).range(CITY_PALETTE);
     allIndiaStateColorScale = d3.scaleOrdinal().domain(allIndiaStates.map((s) => s.state)).range(CITY_PALETTE);
@@ -774,6 +812,7 @@ Promise.all([
     );
     resetActiveCategories();
     renderAggregateSummary();
+    syncLevelButtons();
     drawMarkers();
   })
   .catch((error) => {
