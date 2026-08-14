@@ -54,7 +54,7 @@ const VIEW_MODES = {
     ],
   },
   pairs: {
-    label: "By Sector",
+    label: "By Infrastructure Type",
     series: [
       { key: "formal_german_raw", label: "Formal German Infrastructure (Goethe/PASCH/Zentrum + HEIs + Exam Centres)", color: C_GOETHE },
       { key: "general_skilling_raw", label: "General Skilling Infrastructure (PDOT/SIIC/IISC)", color: C_PDOT },
