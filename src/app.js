@@ -51,14 +51,16 @@ const VIEW_MODES = {
     label: "Language & Health",
     series: [
       { key: "language_total", label: "Language Infrastructure", color: C_GOETHE },
+      { key: "private_lang_training", label: "Pvt. German Language-Training Orgs", color: C_PRIVATE_LANG, countsOnly: true },
       { key: "health_total", label: "Health Infrastructure", color: C_NMC },
     ],
   },
   pairs: {
     label: "By Infrastructure Type",
     series: [
-      { key: "formal_german_raw", label: "Formal German Infrastructure (Goethe/PASCH/Zentrum + HEIs + Exam Centres)", color: C_GOETHE },
-      { key: "general_skilling_raw", label: "General Skilling Infrastructure (PDOT/SIIC/IISC)", color: C_PDOT },
+      { key: "formal_german_raw", label: "German-Language-Specific Infrastructure", color: C_GOETHE },
+      { key: "general_skilling_raw", label: "Foreign Skilling Infrastructure", color: C_PDOT },
+      { key: "private_lang_training", label: "Pvt. German Language-Training Orgs", color: C_PRIVATE_LANG, countsOnly: true },
       { key: "nursing_colleges", label: "INC Nursing Colleges", color: C_INC },
       { key: "medical_colleges", label: "NMC Medical Colleges", color: C_NMC },
       { key: "health_facilities", label: "NABH Accredited Health Facilities", color: C_NABH },
@@ -73,6 +75,7 @@ const VIEW_MODES = {
       { key: "pdot_centres", label: "PDOT Centres", color: C_PDOT },
       { key: "siic_centres", label: "SIIC Centres", color: C_SIIC },
       { key: "iiscs", label: "IISC Centres", color: C_IISC },
+      { key: "private_lang_training", label: "Pvt. German Language-Training Orgs", color: C_PRIVATE_LANG, countsOnly: true },
       { key: "nursing_colleges", label: "INC Nursing Colleges", color: C_INC },
       { key: "medical_colleges", label: "NMC Medical Colleges", color: C_NMC },
       { key: "health_facilities", label: "NABH Accredited Health Facilities", color: C_NABH },
@@ -163,8 +166,22 @@ function currentSeries() {
 }
 
 // Every series in every view mode maps to a count column in cities.json.
+function pvtDisplay() {
+  const level = safeLevel();
+  if (level === "infrastructure") return "note-facility";
+  if (datasetMode === "allIndia" && level === "city") return "note-statelevel";
+  return "entry";
+}
+
+// Pvt. language-training orgs are a counts-only series: shown as an entry
+// wherever they're folded into the totals (state/city bubbles), and dropped in
+// favour of a note where they aren't mapped at all (facility zoom, all-India
+// city view).
 function countableSeries() {
-  return currentSeries();
+  const series = currentSeries();
+  return pvtDisplay() === "entry"
+    ? series
+    : series.filter((s) => s.key !== "private_lang_training");
 }
 
 function activeSeries() {
@@ -419,10 +436,7 @@ function locationHoverHtml(point) {
       return `<div class="hover-row${off}"><span>${s.label}</span><b>${format.format(getRowValue(point, s.key))}</b></div>`;
     })
     .join("");
-  const pvt = "private_lang_training" in point
-    ? `<div class="hover-row hover-row--macro"><span>Pvt. German language-training orgs (macro)</span><b>${point.private_lang_training == null ? "NA" : format.format(point.private_lang_training)}</b></div>`
-    : "";
-  return `<strong>${point.levelName}</strong>${rows}${pvt}`;
+  return `<strong>${point.levelName}</strong>${rows}`;
 }
 
 // Canvas circleMarker -- cheap enough to draw every point at any zoom.
@@ -544,6 +558,11 @@ function renderAggregateSummary() {
   // Every figure below comes from the same rows the table renders, resolved
   // through getRowValue. The per-category numbers therefore always sum to the
   // headline, in every view mode, for both datasets.
+  // Bubbles at state/city zoom are coloured per-entity, not by category, so
+  // category swatches only carry meaning at the facility zoom. Elsewhere they're
+  // shown neutral to avoid implying a colour key the map doesn't use.
+  const level = safeLevel();
+  const coloured = level === "infrastructure";
   let total = 0;
   const items = countableSeries()
     .map((s) => {
@@ -551,8 +570,9 @@ function renderAggregateSummary() {
       const on = activeCategories.has(s.key);
       if (on) total += counted;
       const off = on ? "" : " summary-item--off";
+      const sw = coloured ? s.color : "#c7c2b6";
       return `<div class="summary-item${off}">
-        <span class="swatch" style="background:${s.color}"></span>
+        <span class="swatch" style="background:${sw}"></span>
         <b>${format.format(counted)}</b>
         <span class="summary-label">${s.label}</span>
       </div>`;
@@ -563,17 +583,14 @@ function renderAggregateSummary() {
     ? `All India &middot; ${rows.length} states/UTs`
     : `15 cities`;
 
-  const level = safeLevel();
-  const hasPvt = rows.some((r) => "private_lang_training" in r);
-  const pvtTotal = rows.reduce((s, r) => s + (r.private_lang_training || 0), 0);
+  // Pvt. language-training orgs render as a normal entry above (state/city zoom);
+  // only where they're excluded from the series do we fall back to a note.
   const macroStyle = "margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:#5b5b52;line-height:1.4";
   let macro = "";
-  if (level === "infrastructure") {
+  if (pvtDisplay() === "note-facility") {
     macro = `<div class="summary-macro" style="${macroStyle}">German private language-training orgs \u2014 macro figures only; not mapped to coordinates, so unavailable at the facility zoom.</div>`;
-  } else if (allIndia && level === "city") {
+  } else if (pvtDisplay() === "note-statelevel") {
     macro = `<div class="summary-macro" style="${macroStyle}">German private language-training orgs \u2014 recorded at state level only; not available city-by-city.</div>`;
-  } else if (hasPvt) {
-    macro = `<div class="summary-macro" style="${macroStyle}"><b style="color:#00333A">${format.format(pvtTotal)}</b> German private language-training orgs \u00b7 macro figures only, not mapped to coordinates.</div>`;
   }
 
   host.innerHTML =
@@ -589,7 +606,7 @@ function renderLegend() {
   const legend = document.getElementById("legend");
   const level = safeLevel();
   if (level === "infrastructure") {
-    const categoryChips = currentSeries()
+    const categoryChips = countableSeries()
       .map((s) => {
         const on = activeCategories.has(s.key);
         const style = on
@@ -600,7 +617,8 @@ function renderLegend() {
         return `<button type="button" class="legend-chip${on ? " active" : ""}" data-key="${s.key}" aria-pressed="${on}" style="${style}"><span class="chip-dot" style="background:${dot}"></span>${s.label}${note}</button>`;
       })
       .join("");
-    legend.innerHTML = categoryChips;
+    legend.innerHTML = categoryChips +
+      `<div class="legend-note legend-note--macro" style="margin-top:6px;font-size:12px;color:#5b5b52;line-height:1.4">German private language-training orgs \u2014 macro figures only, not mapped to coordinates.</div>`;
     legend.querySelectorAll(".legend-chip[data-key]").forEach((chip) => {
       chip.addEventListener("click", () => {
         const key = chip.dataset.key;
@@ -624,20 +642,15 @@ function renderTable(level) {
   renderLegend();
   const container = document.getElementById("location-table");
   const series = countableSeries();
+  container.style.setProperty("--col-count", series.length);
   const grouped = datasetMode === "allIndia" && level === "city";
   container.classList.toggle("location-table--grouped", grouped);
-  const showPvt = !grouped && level !== "infrastructure";
-  container.style.setProperty("--col-count", series.length + (showPvt ? 1 : 0));
 
   const head =
     `<div class="table-row table-head">` +
     (grouped ? `<span>State</span><span>City</span>` : `<span>${datasetMode === "allIndia" || level === "state" ? "State" : "City"}</span>`) +
     series.map((s) => `<span${activeCategories.has(s.key) ? "" : ' class="col-off"'}>${s.label}</span>`).join("") +
-    (showPvt ? `<span>Pvt. lang training (macro)</span>` : "") +
     `<span>Selected total</span></div>`;
-
-  const pvtCell = (row) =>
-    showPvt ? `<span class="col-macro">${row.private_lang_training == null ? "NA" : format.format(row.private_lang_training)}</span>` : "";
 
   const cellsFor = (row) =>
     series
@@ -677,7 +690,6 @@ function renderTable(level) {
       .map(
         (row) =>
           `<div class="table-row"><span>${isStateLabel ? row.state : row.city}</span>${cellsFor(row)}` +
-          pvtCell(row) +
           `<span class="row-total">${format.format(locationTotal(row))}</span></div>`
       )
       .join("");
