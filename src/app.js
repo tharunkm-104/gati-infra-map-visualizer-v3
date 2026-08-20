@@ -1,6 +1,7 @@
 const format = new Intl.NumberFormat("en-IN");
 const HOVER_DELAY_MS = 550;
 
+
 // ---- GATI palette tokens ----
 // Health scale: NABH recedes into the basemap grey, colleges pop.
 // Language/skilling scale: warm orange + gold steps, entirely separate from health hues.
