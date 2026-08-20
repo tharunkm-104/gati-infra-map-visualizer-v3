@@ -51,7 +51,6 @@ const VIEW_MODES = {
     label: "Language & Health",
     series: [
       { key: "language_total", label: "Language Infrastructure", color: C_GOETHE },
-      { key: "private_lang_training", label: "Pvt. German Language-Training Orgs", color: C_PRIVATE_LANG, countsOnly: true },
       { key: "health_total", label: "Health Infrastructure", color: C_NMC },
     ],
   },
@@ -107,6 +106,8 @@ const FALLBACK_COLOR = GATI.grey;
 // Darker schemes only: schemeSet3 pastels made white bubble labels unreadable.
 const CITY_PALETTE = [...d3.schemeTableau10, ...d3.schemeDark2, ...d3.schemeCategory10];
 let cityColorScale = null;
+let citiesBase = [];
+let statesBase = [];
 let stateColorScale = null;
 let allIndiaStateColorScale = null;
 
@@ -215,10 +216,10 @@ function safeLevel() {
 // each other and with the map: there is one set of underlying numbers and three
 // ways of grouping it.
 const COMPUTED_KEYS = {
-  language_total: ["goethe_schools", "heis_german", "exam_centres", "pdot_siics", "iiscs"],
+  language_total: ["goethe_schools", "heis_german", "exam_centres", "pdot_centres", "siic_centres", "iiscs", "private_lang_training"],
   health_total: ["health_facilities", "medical_colleges", "nursing_colleges"],
   formal_german_raw: ["goethe_schools", "heis_german", "exam_centres"],
-  general_skilling_raw: ["pdot_siics", "iiscs"],
+  general_skilling_raw: ["pdot_centres", "siic_centres", "iiscs"],
 };
 
 // The all-India rollup names three health columns differently.
@@ -231,9 +232,53 @@ const COLUMN_ALIAS = {
 function getRowValue(row, key) {
   const parts = COMPUTED_KEYS[key];
   if (parts) return parts.reduce((sum, k) => sum + getRowValue(row, k), 0);
-  if (row[key] !== undefined) return row[key] || 0;
-  const alias = COLUMN_ALIAS[key];
-  return alias && row[alias] !== undefined ? row[alias] || 0 : 0;
+  const col = row[key] !== undefined ? key : COLUMN_ALIAS[key];
+  if (!col || row[col] === undefined) return 0;
+  let v = row[col] || 0;
+  // When "true coordinates only" is on, drop the pin-centroid points that vanish
+  // from the map so the card/table/bubbles fall in step with the dots.
+  if (trueCoordsOnly && datasetMode === "allIndia") {
+    const idx = row.city !== undefined ? hollowCityCol.get(row.city) : hollowStateCol.get(row.state);
+    if (idx && idx[col]) v -= idx[col];
+  }
+  return v;
+}
+
+// Per-render index of hollow (pin_centroid) all-India points, so the counts can
+// be reduced live when they're filtered off the map. Keyed by row + column.
+const AI_SUBTYPE_COLUMN = {
+  "NABH Accredited Health Facility": "nabh_facilities",
+  "INC Nursing College": "inc_colleges",
+  "NMC Medical College": "nmc_colleges",
+  "IISC Centre (PMKK)": "iiscs",
+  "PDOT Centre": "pdot_centres",
+  "SIIC Centre": "siic_centres",
+  "Goethe/PASCH/Zentrum School": "goethe_schools",
+  "HEI Offering German": "heis_german",
+  "Goethe/TELC Exam Centre": "exam_centres",
+};
+let hollowStateCol = new Map();
+let hollowCityCol = new Map();
+function buildHollowIndex() {
+  hollowStateCol = new Map();
+  hollowCityCol = new Map();
+  if (datasetMode !== "allIndia") return;
+  allIndiaPoints.forEach((p) => {
+    if (p.coordinateStatus !== "pin_centroid") return;
+    const col = AI_SUBTYPE_COLUMN[p.subtype];
+    if (!col) return;
+    if (p.state) { const m = hollowStateCol.get(p.state) || {}; m[col] = (m[col] || 0) + 1; hollowStateCol.set(p.state, m); }
+    if (p.city) { const m = hollowCityCol.get(p.city) || {}; m[col] = (m[col] || 0) + 1; hollowCityCol.set(p.city, m); }
+  });
+}
+
+// State/city bubbles are shaded by magnitude in a single GATI-teal ramp (dark =
+// more), not by a per-entity colour hash -- so the map never competes with the
+// category palette shown in the card and legend.
+const BUBBLE_GRADIENT = d3.scaleLinear().domain([0, 1]).range(["#CFE3E5", "#00363D"]).clamp(true);
+function bubbleColor(total, maxTotal) {
+  const ratio = maxTotal > 0 ? Math.sqrt(Math.min(total, maxTotal) / maxTotal) : 0;
+  return BUBBLE_GRADIENT(ratio);
 }
 
 // Only sums series that are currently switched on, so bubble sizes and the
@@ -415,11 +460,11 @@ function pointMarker(feature, level, latitude, longitude) {
   const maxTotal = maxTotalForLevel(level);
   const total = locationTotal(point);
   const size = radiusForTotal(total, maxTotal);
-  const colorScale = datasetMode === "allIndia" ? allIndiaStateColorScale : level === "state" ? stateColorScale : cityColorScale;
-  const color = colorScale(point.levelName);
+  const color = bubbleColor(total, maxTotal);
+  const ink = labelInk(color);
   const marker = L.marker([latitude, longitude], {
     icon: L.divIcon({
-      html: `<div class="marker-bubble" style="width:${size}px;height:${size}px;background:${color}">${format.format(total)}</div>`,
+      html: `<div class="marker-bubble" style="width:${size}px;height:${size}px;background:${color};color:${ink}">${format.format(total)}</div>`,
       className: "",
       iconSize: [size, size],
       iconAnchor: [size / 2, size / 2],
@@ -556,13 +601,8 @@ function renderAggregateSummary() {
   }
 
   // Every figure below comes from the same rows the table renders, resolved
-  // through getRowValue. The per-category numbers therefore always sum to the
-  // headline, in every view mode, for both datasets.
-  // Bubbles at state/city zoom are coloured per-entity, not by category, so
-  // category swatches only carry meaning at the facility zoom. Elsewhere they're
-  // shown neutral to avoid implying a colour key the map doesn't use.
-  const level = safeLevel();
-  const coloured = level === "infrastructure";
+  // through getRowValue (which also drops hollow points when "true coordinates
+  // only" is on). The per-category numbers therefore always sum to the headline.
   let total = 0;
   const items = countableSeries()
     .map((s) => {
@@ -570,9 +610,8 @@ function renderAggregateSummary() {
       const on = activeCategories.has(s.key);
       if (on) total += counted;
       const off = on ? "" : " summary-item--off";
-      const sw = coloured ? s.color : "#c7c2b6";
       return `<div class="summary-item${off}">
-        <span class="swatch" style="background:${sw}"></span>
+        <span class="swatch" style="background:${s.color}"></span>
         <b>${format.format(counted)}</b>
         <span class="summary-label">${s.label}</span>
       </div>`;
@@ -583,14 +622,14 @@ function renderAggregateSummary() {
     ? `All India &middot; ${rows.length} states/UTs`
     : `15 cities`;
 
-  // Pvt. language-training orgs render as a normal entry above (state/city zoom);
-  // only where they're excluded from the series do we fall back to a note.
+  // Pvt. language-training orgs show as a normal entry wherever they're counted;
+  // where they aren't, a plain-language note explains why.
   const macroStyle = "margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:#5b5b52;line-height:1.4";
   let macro = "";
   if (pvtDisplay() === "note-facility") {
-    macro = `<div class="summary-macro" style="${macroStyle}">German private language-training orgs \u2014 macro figures only; not mapped to coordinates, so unavailable at the facility zoom.</div>`;
+    macro = `<div class="summary-macro" style="${macroStyle}">Private German language-training orgs aren't shown as dots \u2014 we have the state and city counts, but not each one's exact location.</div>`;
   } else if (pvtDisplay() === "note-statelevel") {
-    macro = `<div class="summary-macro" style="${macroStyle}">German private language-training orgs \u2014 recorded at state level only; not available city-by-city.</div>`;
+    macro = `<div class="summary-macro" style="${macroStyle}">Private German language-training orgs are counted per state only, not city by city.</div>`;
   }
 
   host.innerHTML =
@@ -617,15 +656,13 @@ function renderLegend() {
         return `<button type="button" class="legend-chip${on ? " active" : ""}" data-key="${s.key}" aria-pressed="${on}" style="${style}"><span class="chip-dot" style="background:${dot}"></span>${s.label}${note}</button>`;
       })
       .join("");
-    legend.innerHTML = categoryChips +
-      `<div class="legend-note legend-note--macro" style="margin-top:6px;font-size:12px;color:#5b5b52;line-height:1.4">German private language-training orgs \u2014 macro figures only, not mapped to coordinates.</div>`;
+    legend.innerHTML = categoryChips;
     legend.querySelectorAll(".legend-chip[data-key]").forEach((chip) => {
       chip.addEventListener("click", () => {
         const key = chip.dataset.key;
         if (activeCategories.has(key)) activeCategories.delete(key);
         else activeCategories.add(key);
-        renderAggregateSummary();
-        drawMarkers();
+        refresh();
       });
     });
     return;
@@ -706,13 +743,26 @@ function coverageNoteHtml(level) {
   return `<p class="table-note">${format.format(c.cities)} cities across ${format.format(c.states)} states/UTs.
     ${format.format(c.cityAttributed)} of ${format.format(c.totalPoints)} points carry a city;
     ${format.format(c.cityMissing)} do not and appear only in the state view and on the map.
-    City is parsed from free-text postal addresses, so only cities named in the source extracts appear here.</p>`;
+    City is resolved from each facility's coordinates, so only points we could place on the map appear here.</p>`;
 }
 
 // ---- controls ----
-// "Follow zoom" is a mode, not a level: with it on, the level buttons show
-// which level the current zoom resolves to but do not pin it. Clicking a level
-// pins that level and switches the mode off.
+// Single entry point: any toggle (zoom level, view mode, dataset, follow-zoom,
+// true-coordinates, or a map pan/zoom) calls refresh(), which recomputes the
+// counts for the current dataset and repaints the card, legend, table and map
+// together. This is what keeps every (zoom x view-mode) combination in step,
+// with no stale colours or lagging panels.
+function refresh() {
+  if (datasetMode !== "allIndia") {
+    const pts = coordinateFilteredInfrastructure();
+    cities = recountFromPoints(citiesBase, "city", (p) => p.city, pts);
+    states = recountFromPoints(statesBase, "state", stateForPoint, pts);
+  }
+  buildHollowIndex();
+  syncLevelButtons();
+  renderAggregateSummary();
+  drawMarkers();
+}
 const followZoomToggle = document.getElementById("follow-zoom-toggle");
 
 function syncLevelButtons() {
@@ -727,16 +777,14 @@ document.querySelectorAll(".level-button").forEach((button) => {
   button.addEventListener("click", () => {
     forcedLevel = button.dataset.level;
     if (followZoomToggle) followZoomToggle.checked = false;
-    syncLevelButtons();
-    drawMarkers();
+    refresh();
   });
 });
 
 if (followZoomToggle) {
   followZoomToggle.addEventListener("change", () => {
     if (followZoomToggle.checked) forcedLevel = "auto";
-    syncLevelButtons();
-    drawMarkers();
+    refresh();
   });
 }
 
@@ -745,8 +793,7 @@ document.querySelectorAll(".mode-button").forEach((button) => {
     viewMode = button.dataset.mode;
     resetActiveCategories();
     document.querySelectorAll(".mode-button").forEach((b) => b.classList.toggle("active", b === button));
-    renderAggregateSummary();
-    drawMarkers();
+    refresh();
   });
 });
 
@@ -756,27 +803,24 @@ document.querySelectorAll(".dataset-button").forEach((button) => {
     document.querySelectorAll(".dataset-button").forEach((b) => b.classList.toggle("active", b === button));
     document.body.classList.toggle("all-india-mode", datasetMode === "allIndia");
     resetActiveCategories();
-    renderAggregateSummary();
-    drawMarkers();
+    refresh();
   });
 });
 
 map.on("zoomend moveend", () => {
-  syncLevelButtons();
-  drawMarkers();
+  refresh();
 });
 
 const trueCoordsToggle = document.getElementById("true-coords-toggle");
 if (trueCoordsToggle) {
   trueCoordsToggle.addEventListener("change", () => {
     trueCoordsOnly = trueCoordsToggle.checked;
-    renderAggregateSummary();
-    drawMarkers();
+    refresh();
   });
 }
 
-const GRANULAR_KEYS = ["goethe_schools", "heis_german", "exam_centres", "pdot_siics",
-                       "iiscs", "health_facilities", "medical_colleges", "nursing_colleges"];
+const GRANULAR_KEYS = ["goethe_schools", "heis_german", "exam_centres", "pdot_centres",
+                       "siic_centres", "iiscs", "health_facilities", "medical_colleges", "nursing_colleges"];
 
 // City is the only location field every pilot point carries. NABH rows in
 // particular have state: null for all 3,847 of them, and the rows that do carry
@@ -844,18 +888,13 @@ Promise.all([
     allIndiaPoints = allIndiaPointRows.filter(isRenderableInfra);
     renderableInfrastructure = infrastructure.filter(isRenderableInfra).filter(isEligiblePilotPoint);
     cityToState = new Map(cities.map((c) => [c.city, c.state]));
-    cities = recountFromPoints(cities, "city", (p) => p.city, renderableInfrastructure);
-    states = recountFromPoints(states, "state", stateForPoint, renderableInfrastructure);
-    cityColorScale = d3.scaleOrdinal().domain(cities.map((c) => c.city)).range(CITY_PALETTE);
-    stateColorScale = d3.scaleOrdinal().domain(states.map((s) => s.state)).range(CITY_PALETTE);
-    allIndiaStateColorScale = d3.scaleOrdinal().domain(allIndiaStates.map((s) => s.state)).range(CITY_PALETTE);
+    citiesBase = cityRows;
+    statesBase = stateRows;
     console.info(
       `[infrastructure-layer] renderable=${renderableInfrastructure.length} dropped=${infrastructure.length - renderableInfrastructure.length} total=${infrastructure.length}`
     );
     resetActiveCategories();
-    renderAggregateSummary();
-    syncLevelButtons();
-    drawMarkers();
+    refresh();
   })
   .catch((error) => {
     document.getElementById("location-table").innerHTML = `<p class="detail-copy">Data load failed: ${error.message}</p>`;
