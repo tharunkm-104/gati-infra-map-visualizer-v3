@@ -138,7 +138,7 @@ const map = L.map("map", {
 }).setView([20.7, 78.9], 5);
 
 L.control.zoom({ position: "bottomright" }).addTo(map);
-L.tileLayer(https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_2n40_1_0b5fd80ac2608df16bd700ff", {
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2n40_1_0b5fd80ac2608df16bd700ff", {
   attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
   maxZoom: 19,
 }).addTo(map);
